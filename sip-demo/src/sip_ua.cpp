@@ -109,11 +109,21 @@ static std::string to_std(const pj_str_t & s)
     return s.ptr ? std::string(s.ptr, s.slen) : std::string();
 }
 
-// Make sure target is "sip:..." rather than just "alice@example.com".
+// Make sure target is "sip:..." rather than just "alice@example.com", and
+// pin the transport to TCP unless the caller has already specified one.
+// We only register a TCP SIP transport (see start()), so a URI without a
+// transport= parameter would otherwise leave PJSIP guessing (and on a SIP
+// URI without parameters it defaults to UDP, which we don't support).
 static std::string normalise_uri(const std::string & u)
 {
-    if (u.rfind("sip:", 0) == 0 || u.rfind("sips:", 0) == 0) return u;
-    return "sip:" + u;
+    std::string out = u;
+    if (out.rfind("sip:", 0) != 0 && out.rfind("sips:", 0) != 0)
+        out = "sip:" + out;
+    // sips: implies TLS, leave it alone.
+    if (out.rfind("sips:", 0) == 0) return out;
+    if (out.find("transport=") == std::string::npos)
+        out += ";transport=tcp";
+    return out;
 }
 
 // ----------------------------------------------------------------------------
@@ -270,14 +280,18 @@ std::string SipUA::start(const std::string & user_agent, int local_port)
 
     m.pool = pj_pool_create(&m.cp.factory, "sipua", 4096, 4096, nullptr);
 
-    // UDP transport.
-    pj_sockaddr_in addr;
-    pj_bzero(&addr, sizeof(addr));
-    addr.sin_family = pj_AF_INET();
-    addr.sin_addr.s_addr = 0;
-    addr.sin_port = pj_htons(static_cast<pj_uint16_t>(local_port));
-    st = pjsip_udp_transport_start(m.endpt, &addr, nullptr, 1, nullptr);
-    if (st != PJ_SUCCESS) { stop(); return "pjsip_udp_transport_start: " + pj_err(st); }
+    // TCP transport. Pexip Infinity prefers TCP for SIP signalling, and
+    // typical INVITE offers (multiple video codecs + ICE candidates) easily
+    // exceed PJSIP's UDP MTU threshold (~1300 bytes), at which point UDP
+    // would fail anyway. We therefore use TCP exclusively for SIP — RTP
+    // media still flows over UDP, but that's handled by Pulse, not PJSIP.
+    pj_sockaddr_in tcp_addr;
+    pj_bzero(&tcp_addr, sizeof(tcp_addr));
+    tcp_addr.sin_family = pj_AF_INET();
+    tcp_addr.sin_addr.s_addr = 0;
+    tcp_addr.sin_port = pj_htons(static_cast<pj_uint16_t>(local_port));
+    st = pjsip_tcp_transport_start(m.endpt, &tcp_addr, 1, nullptr);
+    if (st != PJ_SUCCESS) { stop(); return "pjsip_tcp_transport_start: " + pj_err(st); }
 
     // Init transaction layer + UA + invitation session usage.
     st = pjsip_tsx_layer_init_module(m.endpt);
