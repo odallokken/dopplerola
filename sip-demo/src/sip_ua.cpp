@@ -67,11 +67,8 @@ using EndedCallback   = SipUA::EndedCallback;
 
 // We need a single back-pointer from PJSIP's invite-callbacks into our Impl.
 // The pjsip_inv_session has a `mod_data[mod_id]` slot per module — we use
-// our `mod_app` module's id for that.
-static SipUA::Impl * impl_from_inv(pjsip_inv_session * inv, int mod_id)
-{
-    return static_cast<SipUA::Impl *>(inv->mod_data[mod_id]);
-}
+// our `mod_app` module's id for that. The callback recovers it via a
+// linear scan over mod_data (one slot is populated; see cb_on_state_changed).
 
 // ----------------------------------------------------------------------------
 // Helpers
@@ -157,16 +154,13 @@ static std::string status_text(int code, const pj_str_t & reason)
 //   DISCONNECTED-> end. If we never delivered on_answer, this was a failure.
 static void cb_on_state_changed(pjsip_inv_session * inv, pjsip_event * /*e*/)
 {
-    auto * impl = impl_from_inv(inv, inv->mod_data[0] ? 0 : 0);
-    // The mod_id we stored under is inv->mod_data[mod_app.id]; but we don't
-    // have direct access to mod_app.id here, so we walk the array — only
-    // one slot is ever populated.
-    if (!impl) {
-        for (unsigned i = 0; i < PJ_ARRAY_SIZE(inv->mod_data); ++i) {
-            if (inv->mod_data[i]) {
-                impl = static_cast<SipUA::Impl *>(inv->mod_data[i]);
-                break;
-            }
+    // Recover our Impl* from the inv's mod_data slot. We don't have mod_app's
+    // id in scope here, so walk the array — at most one slot is populated.
+    SipUA::Impl * impl = nullptr;
+    for (unsigned i = 0; i < PJ_ARRAY_SIZE(inv->mod_data); ++i) {
+        if (inv->mod_data[i]) {
+            impl = static_cast<SipUA::Impl *>(inv->mod_data[i]);
+            break;
         }
     }
     if (!impl) return;
@@ -297,9 +291,12 @@ std::string SipUA::start(const std::string & user_agent, int local_port)
     if (st != PJ_SUCCESS) { stop(); return "100rel_init: " + pj_err(st); }
 
     // Register a dummy module just so we get a mod_id to stash our Impl
-    // pointer in via inv->mod_data[].
-    m.mod_app.name    = pj_str(const_cast<char*>("sipua-app"));
-    m.mod_app.id      = -1;
+    // pointer in via inv->mod_data[]. The name is kept by reference by
+    // PJSIP, so it must outlive the endpoint — we store it in a static
+    // mutable buffer rather than const-casting a string literal.
+    static char mod_name[] = "sipua-app";
+    m.mod_app.name     = pj_str(mod_name);
+    m.mod_app.id       = -1;
     m.mod_app.priority = PJSIP_MOD_PRIORITY_APPLICATION;
     st = pjsip_endpt_register_module(m.endpt, &m.mod_app);
     if (st != PJ_SUCCESS) { stop(); return "register_module: " + pj_err(st); }
@@ -387,7 +384,12 @@ bool SipUA::place_call(const std::string & target_uri,
 
     pj_str_t from_s    = pj_str(from_buf);
     pj_str_t contact_s = pj_str(contact_buf);
-    pj_str_t target_s  = pj_str(const_cast<char*>(target.c_str()));
+    // pj_str_t is non-const by API; the target buffer lives on our stack so
+    // PJSIP can safely keep the reference for the duration of this function
+    // (it copies into pool-allocated storage before returning).
+    char target_buf[512];
+    std::snprintf(target_buf, sizeof(target_buf), "%s", target.c_str());
+    pj_str_t target_s  = pj_str(target_buf);
 
     // Dialog.
     pjsip_dialog * dlg = nullptr;
@@ -439,9 +441,14 @@ bool SipUA::place_call(const std::string & target_uri,
         if (on_failure) on_failure("inv_invite: " + pj_err(st));
         return false;
     }
-    // Tag with our User-Agent header.
-    pj_str_t ua_name = pj_str(const_cast<char*>("User-Agent"));
-    pj_str_t ua_val  = pj_str(const_cast<char*>(m.user_agent.c_str()));
+    // Tag with our User-Agent header. The pjsip_generic_string_hdr_create
+    // call copies both name and value into tdata->pool, so the mutable
+    // buffers we hand it only need to outlive the call itself.
+    char ua_name_buf[] = "User-Agent";
+    char ua_val_buf[128];
+    std::snprintf(ua_val_buf, sizeof(ua_val_buf), "%s", m.user_agent.c_str());
+    pj_str_t ua_name = pj_str(ua_name_buf);
+    pj_str_t ua_val  = pj_str(ua_val_buf);
     pjsip_hdr * ua_hdr = (pjsip_hdr *)pjsip_generic_string_hdr_create(
         tdata->pool, &ua_name, &ua_val);
     if (ua_hdr) pjsip_msg_add_hdr(tdata->msg, ua_hdr);

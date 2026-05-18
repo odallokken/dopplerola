@@ -205,8 +205,13 @@ static void on_sip_failure(AppState & app, const std::string & reason)
     set_status(app, std::string("SIP call failed: ") + reason);
     set_progress(app, "");
     // Pulse is in the middle of stage-1; tear it down so we can try again.
-    if (pulse_is_connected(app.pulse))
-        pulse_disconnect(app.pulse, nullptr);
+    // We're on PJSIP's worker thread here, so use the async variant - a
+    // synchronous pulse_disconnect() would block the SIP event loop until
+    // Pulse's teardown is done.
+    if (pulse_is_connected(app.pulse)) {
+        PulseAsyncOperationResultCallbackConfig result_cb{ on_async_result, &app };
+        pulse_disconnect_async(app.pulse, &result_cb, nullptr);
+    }
     app.stage.store(static_cast<int>(CallStage::Idle));
 }
 
