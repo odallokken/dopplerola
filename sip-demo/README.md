@@ -42,7 +42,7 @@ wire in an `INVITE`.
 | File                  | Purpose                                                 |
 | --------------------- | ------------------------------------------------------- |
 | `src/main.cpp`        | GLFW + ImGui + Pulse glue, almost identical to the REST demo. |
-| `src/sip_ua.h/.cpp`   | Minimal PJSIP wrapper. UDP only, no REGISTER, one outbound call at a time. |
+| `src/sip_ua.h/.cpp`   | Minimal PJSIP wrapper. TCP only, no REGISTER, one outbound call at a time. |
 | `CMakeLists.txt`      | Build glue. Reuses the parent project's `pexip::pulse` imported target and Dear ImGui FetchContent. |
 
 ## Prerequisites
@@ -86,7 +86,9 @@ bindings, same auto-spawned video windows.
   outgoing dialog. This is a placeholder choice — Pulse's REST path normally
   uses the Infinity-side call UUID. Revisit once we know what Pulse actually
   uses this field for in pure-SIP mode.
-* Transport is UDP only and there's no SIP REGISTER — this is a "place a
-  direct INVITE" demo, nothing more. Add TLS/TCP/REGISTER if/when needed.
+* Transport is TCP only and there's no SIP REGISTER — this is a "place a
+  direct INVITE" demo, nothing more. TCP is the deliberate choice (Pexip
+  Infinity prefers it, and a video INVITE easily exceeds PJSIP's UDP MTU
+  threshold). Add TLS / REGISTER if/when needed.
 * The user agent identifies as `doppler-sip/<version>` on both the SIP
   `User-Agent` header and Pulse's application user-agent string.

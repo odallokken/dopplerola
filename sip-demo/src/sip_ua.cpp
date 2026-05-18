@@ -2,7 +2,7 @@
 //  sip_ua.cpp — minimal PJSIP wrapper for the doppler sip-demo
 // ----------------------------------------------------------------------------
 //
-//  The implementation is intentionally tiny: one PJSIP endpoint, one UDP
+//  The implementation is intentionally tiny: one PJSIP endpoint, one TCP
 //  transport, one outbound dialog at a time, no REGISTER. The flow is
 //  modelled on PJSIP's own `samples/simpleua.c`, but stripped down to just
 //  the UAC (caller) side and with all media handed off to the caller

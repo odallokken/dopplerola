@@ -3,11 +3,13 @@
 // ----------------------------------------------------------------------------
 //
 //  This wraps just enough of PJSIP to do exactly one thing: place a single
-//  outbound SIP INVITE over UDP carrying a caller-supplied SDP offer, get
+//  outbound SIP INVITE over TCP carrying a caller-supplied SDP offer, get
 //  the answer SDP back, and tear it down with BYE on request.
 //
-//  No REGISTER, no inbound calls, no TLS/TCP, no SIP credentials, no media
-//  — Pulse owns all of that. PJSIP is purely a signalling transport here.
+//  No REGISTER, no inbound calls, no UDP, no TLS, no SIP credentials, no
+//  media — Pulse owns all of that. PJSIP is purely a signalling transport
+//  here. TCP-only is a deliberate choice: Pexip Infinity prefers TCP for
+//  SIP, and a video INVITE easily exceeds the UDP MTU threshold.
 //
 //  All PJSIP work happens on an internal worker thread. The user supplies
 //  three callbacks (answer / failed / ended) which are invoked from that
@@ -43,11 +45,11 @@ public:
     SipUA(const SipUA &)             = delete;
     SipUA & operator=(const SipUA &) = delete;
 
-    // Bring PJSIP up (UDP transport, worker thread). Returns empty string
+    // Bring PJSIP up (TCP transport, worker thread). Returns empty string
     // on success, or a human-readable error message on failure.
     //
     // user_agent is sent in the SIP User-Agent header.
-    // local_port is the UDP port to bind for SIP; 0 picks any free port.
+    // local_port is the TCP port to bind for SIP; 0 picks any free port.
     std::string start(const std::string & user_agent, int local_port = 0);
 
     // Tear PJSIP back down. Safe to call even after a failed start().

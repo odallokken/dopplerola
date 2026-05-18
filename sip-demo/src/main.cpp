@@ -370,7 +370,7 @@ static void draw_ui(AppState & app)
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextWrapped(
-        "Pulse owns all media. PJSIP only signals: it sends INVITE over UDP "
+        "Pulse owns all media. PJSIP only signals: it sends INVITE over TCP "
         "with Pulse's SDP offer and pipes the 200 OK's answer SDP straight "
         "back into pulse_setup_stage_2_from_structure(). No REGISTER, no "
         "credentials, no TLS - this is the most minimal SIP UA we could "
