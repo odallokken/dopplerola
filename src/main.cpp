@@ -185,6 +185,16 @@ static void install_callbacks(AppState & app)
     pulse_options_set_application_user_agent_string(app.pulse, "doppler/0.1");
 }
 
+// Tear down anything install_callbacks() wired up.  This MUST be called
+// before pulse_free(): otherwise an in-flight callback could fire on a
+// background Pulse thread while we're already in shutdown, find a dangling
+// AppState pointer in its user_context and crash.  Passing NULL as the
+// callback_config tells Pulse to clear the registration.
+static void uninstall_callbacks(AppState & app)
+{
+    pulse_options_set_conference_state_callback(app.pulse, nullptr);
+}
+
 // Kick off an async connect to a Pexip Infinity conference.
 static void start_connect(AppState & app)
 {
@@ -393,6 +403,7 @@ int main()
     // before pulse_free() releases the handle.
     if (pulse_is_connected(app.pulse))
         pulse_disconnect(app.pulse, nullptr);
+    uninstall_callbacks(app);
     pulse_free(app.pulse);
 
     ImGui_ImplOpenGL3_Shutdown();
