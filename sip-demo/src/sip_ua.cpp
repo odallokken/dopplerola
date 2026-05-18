@@ -16,6 +16,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 // PJSIP headers. The umbrella `pjsua.h` would pull in pjmedia too, which we
 // don't need — we only want signalling + SDP parsing.
@@ -292,6 +293,58 @@ std::string SipUA::start(const std::string & user_agent, int local_port)
     tcp_addr.sin_port = pj_htons(static_cast<pj_uint16_t>(local_port));
     st = pjsip_tcp_transport_start(m.endpt, &tcp_addr, 1, nullptr);
     if (st != PJ_SUCCESS) { stop(); return "pjsip_tcp_transport_start: " + pj_err(st); }
+
+    // DNS resolver. Without one PJSIP falls back to getaddrinfo() (and
+    // logs "DNS resolver not available"), which can only return A/AAAA
+    // records — no SRV/NAPTR — so it can't honour the _sip._tcp.<domain>
+    // SRV records that Pexip (and most SIP infra) publish. Once a
+    // pj_dns_resolver is attached to the endpoint, PJSIP's pjsip_resolve()
+    // automatically performs RFC 3263 resolution: with ;transport=tcp on
+    // the URI that's an SRV lookup of _sip._tcp.<domain> followed by the
+    // A/AAAA for the chosen target, which is exactly what we want.
+    //
+    // We seed the resolver with the system's nameservers parsed out of
+    // /etc/resolv.conf; if that file is missing or empty we fall back to
+    // a public resolver so we at least get _something_ working.
+    {
+        pj_dns_resolver * resolver = nullptr;
+        st = pjsip_endpt_create_resolver(m.endpt, &resolver);
+        if (st != PJ_SUCCESS) {
+            stop(); return "pjsip_endpt_create_resolver: " + pj_err(st);
+        }
+
+        std::vector<std::string> ns;
+        if (FILE * f = std::fopen("/etc/resolv.conf", "r")) {
+            char line[512];
+            while (std::fgets(line, sizeof(line), f)) {
+                if (line[0] == '#' || line[0] == ';') continue;
+                char kw[32] = {0}, ip[256] = {0};
+                if (std::sscanf(line, "%31s %255s", kw, ip) == 2
+                        && std::strcmp(kw, "nameserver") == 0
+                        && ip[0] != '\0') {
+                    ns.emplace_back(ip);
+                }
+            }
+            std::fclose(f);
+        }
+        if (ns.empty()) ns.emplace_back("8.8.8.8");
+
+        std::vector<pj_str_t> srv(ns.size());
+        for (size_t i = 0; i < ns.size(); ++i)
+            srv[i] = pj_str(const_cast<char *>(ns[i].c_str()));
+
+        st = pj_dns_resolver_set_ns(resolver,
+                                    static_cast<unsigned>(srv.size()),
+                                    srv.data(), nullptr);
+        if (st != PJ_SUCCESS) {
+            stop(); return "pj_dns_resolver_set_ns: " + pj_err(st);
+        }
+
+        st = pjsip_endpt_set_resolver(m.endpt, resolver);
+        if (st != PJ_SUCCESS) {
+            stop(); return "pjsip_endpt_set_resolver: " + pj_err(st);
+        }
+    }
 
     // Init transaction layer + UA + invitation session usage.
     st = pjsip_tsx_layer_init_module(m.endpt);
