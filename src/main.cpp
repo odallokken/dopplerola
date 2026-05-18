@@ -185,6 +185,37 @@ static void install_callbacks(AppState & app)
     pulse_options_set_application_user_agent_string(app.pulse, "doppler/0.1");
 }
 
+// Attach the operating-system's default camera, microphone and speaker to the
+// MAIN media content.  Pulse needs a device session bound on each direction
+// before media will flow, so without this the remote side hears/sees nothing
+// (and we hear/see nothing back).  pulse_device_session_connect_system_default
+// asks Pulse to pick whatever the OS currently considers the default device,
+// which is the right default for a tiny demo - real apps usually enumerate
+// devices and let the user pick (see pexninja.cpp for an example of that).
+static void connect_default_devices(AppState & app)
+{
+    struct Binding {
+        const char *    name;
+        PulseMediaType  type;
+        PulseMediaDirection direction;
+    };
+    const Binding bindings[] = {
+        { "camera",     PULSE_MEDIA_VIDEO, PULSE_MEDIA_INPUT  },
+        { "microphone", PULSE_MEDIA_AUDIO, PULSE_MEDIA_INPUT  },
+        { "speaker",    PULSE_MEDIA_AUDIO, PULSE_MEDIA_OUTPUT },
+    };
+
+    for (const Binding & b : bindings) {
+        PulseError err = pulse_device_session_connect_system_default(
+            app.pulse, PULSE_MEDIA_CONTENT_MAIN, b.type, b.direction);
+        if (err != PULSE_SUCCESS) {
+            std::fprintf(stderr,
+                         "Failed to attach default %s: %s\n",
+                         b.name, pulse_strerror(err));
+        }
+    }
+}
+
 // Tear down anything install_callbacks() wired up.  This MUST be called
 // before pulse_free(): otherwise an in-flight callback could fire on a
 // background Pulse thread while we're already in shutdown, find a dangling
@@ -374,6 +405,10 @@ int main()
         return 1;
     }
     install_callbacks(app);
+
+    // Bind the system's default camera/microphone/speaker to the call.  Must
+    // happen before we connect to a conference, otherwise media won't flow.
+    connect_default_devices(app);
 
     // ---- 4.  The classic ImGui main loop ---------------------------------
     while (!glfwWindowShouldClose(window)) {
