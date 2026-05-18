@@ -51,6 +51,8 @@ The whole thing still fits in a single, heavily-commented
 | `debs/`                 | Pre-built Pulse `.deb` packages for Ubuntu 24.04. |
 | `opt/`, `usr/`          | The extracted contents of the Pulse `.deb`s.      |
 | `pexninja/`             | The much larger reference Pulse client (optional, see below). |
+| `sip-demo/`             | A second tiny demo: Pulse as media engine + PJSIP for signalling (optional, see below). |
+| `scripts/`              | Helper scripts (currently just `install-pjsip.sh`).            |
 
 ## Build
 
@@ -222,3 +224,24 @@ The extra dependencies (ImPlot, gl3w, ImGui-Addons) are fetched at configure
 time via `FetchContent`. The Dear ImGui tag is the `-docking` variant
 because `pexninja` uses multi-viewport + docking features; the simpler
 `doppler` target keeps building unchanged against the same superset.
+
+## Building the `doppler-sip` SIP-mode demo
+
+`sip-demo/` is a second tiny demo (close in spirit to the main `doppler`
+demo) that uses Pulse as a *media engine only*. Signalling is handled by
+**PJSIP**: Pulse generates an SDP offer, PJSIP places a SIP `INVITE`, and
+the 200 OK's answer SDP is fed back into Pulse. No REST, no Pexip Infinity
+node required - any SIP endpoint will do.
+
+PJSIP isn't packaged for Ubuntu 24.04, so we ship a helper that builds and
+installs it under `/usr/local`:
+
+```bash
+sudo ./scripts/install-pjsip.sh
+cmake -S . -B build -DBUILD_DOPPLER_SIP=ON
+cmake --build build -j --target doppler-sip
+./build/run-doppler-sip.sh
+```
+
+See [`sip-demo/README.md`](sip-demo/README.md) for the flow diagram and
+the per-file walk-through.
