@@ -66,7 +66,7 @@ set(FETCHCONTENT_QUIET OFF)
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG        v1.91.5
+    GIT_TAG        v1.91.5-docking
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(imgui)
 
@@ -111,6 +111,17 @@ set_target_properties(doppler PROPERTIES
 
 # Convenience launcher that sets LD_LIBRARY_PATH so the user can just run
 # `./build/run-doppler.sh` without dealing with Pulse's transitive lib paths.
+# ---------------------------------------------------------------------------
+# Optional: the much larger pexninja reference client, lifted from another
+# repo and ported to build inside this tree. Disabled by default because it
+# pulls in extra system deps (X11, GStreamer, glib-2.0); flip BUILD_PEXNINJA
+# on (e.g. `cmake -S . -B build -DBUILD_PEXNINJA=ON`) to build it.
+# ---------------------------------------------------------------------------
+option(BUILD_PEXNINJA "Build the larger pexninja reference client" OFF)
+if(BUILD_PEXNINJA)
+    add_subdirectory(pexninja)
+endif()
+
 file(GENERATE
     OUTPUT  "${CMAKE_BINARY_DIR}/run-doppler.sh"
     CONTENT "#!/bin/sh

@@ -27,6 +27,21 @@
 #include <implot.h>
 #include <imgui_stdlib.h>
 
+/* ---------------------------------------------------------------------------
+ * Dear ImGui compatibility shims
+ *
+ * pexninja was originally written against the "docking" branch of Dear
+ * ImGui, which adds multi-viewport / docking-aware flags that are absent
+ * from the upstream release branch. When built against the release branch
+ * (as doppler does, via FetchContent), the symbols below don't exist —
+ * stub them so the corresponding code paths compile into no-ops.
+ * ------------------------------------------------------------------------ */
+#ifndef IMGUI_HAS_DOCK
+#  ifndef ImGuiWindowFlags_NoDocking
+#    define ImGuiWindowFlags_NoDocking 0
+#  endif
+#endif
+
 #include <GL/gl3w.h>
 #include <GLFW/glfw3.h>
 
@@ -9115,8 +9130,8 @@ configure_menu_connection (PexNinja * application)
           }
         }
 
-        if (ImGui::IsKeyPressed (ImGui::GetKeyIndex (ImGuiKey_Enter)) ||
-            ImGui::IsKeyPressed (ImGui::GetKeyIndex (ImGuiKey_KeyPadEnter))) {
+        if (ImGui::IsKeyPressed (ImGuiKey_Enter) ||
+            ImGui::IsKeyPressed (ImGuiKey_KeypadEnter)) {
           if (application->state.conference_alias_list->size > 0) {
             strncpy (lookup_conference_alias, application->state.conference_alias_list->list[0]->alias, 1023);
           }
@@ -9156,8 +9171,8 @@ configure_menu_connection (PexNinja * application)
           }
         }
 
-        if (ImGui::IsKeyPressed (ImGui::GetKeyIndex (ImGuiKey_Enter)) ||
-            ImGui::IsKeyPressed (ImGui::GetKeyIndex (ImGuiKey_KeyPadEnter))) {
+        if (ImGui::IsKeyPressed (ImGuiKey_Enter) ||
+            ImGui::IsKeyPressed (ImGuiKey_KeypadEnter)) {
           if (application->state.device_alias_list->size > 0) {
             strncpy (lookup_device_alias, application->state.device_alias_list->list[0]->alias, 1023);
           }
@@ -10634,8 +10649,8 @@ _configure_popup_sso_provider_selection (PexNinja * application)
       }
 
       bool accept = ImGui::Button ("Accept");
-      if (ImGui::IsKeyPressed (ImGui::GetKeyIndex (ImGuiKey_Enter)) ||
-          ImGui::IsKeyPressed (ImGui::GetKeyIndex (ImGuiKey_KeyPadEnter)))
+      if (ImGui::IsKeyPressed (ImGuiKey_Enter) ||
+          ImGui::IsKeyPressed (ImGuiKey_KeypadEnter))
         accept = true;
 
       if (accept) {
@@ -12140,12 +12155,12 @@ main (int argc, const char ** argv)
     if (application.state.conn_status == PULSE_CONNECTION_STATUS_CONNECTED && application.state.audio_mute) {
       const char * msg = "Audio temporarily unmuted";
       if (application.state.audio_temporarily_unmuted == false &&
-          ImGui::IsKeyPressed (ImGui::GetKeyIndex (ImGuiKey_Space))) {
+          ImGui::IsKeyPressed (ImGuiKey_Space)) {
         application.state.audio_temporarily_unmuted = true;
         register_alarm (&application, msg, 0, yellow_color);
         pulse_mute_audio_input (application.client, false);
       } else if (application.state.audio_temporarily_unmuted &&
-                 ImGui::IsKeyReleased (ImGui::GetKeyIndex (ImGuiKey_Space))) {
+                 ImGui::IsKeyReleased (ImGuiKey_Space)) {
         pulse_mute_audio_input (application.client, true);
         application.state.audio_temporarily_unmuted = false;
         cancel_alarm (&application, msg, 0);
@@ -12271,10 +12286,14 @@ main (int argc, const char ** argv)
     glClearDepth (1.0);
 
     ImGuiIO & io = ImGui::GetIO ();
+#ifdef IMGUI_HAS_VIEWPORT
     if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
       ImGui::UpdatePlatformWindows ();
       ImGui::RenderPlatformWindowsDefault ();
     }
+#else
+    (void) io; /* multi-viewport support only exists in the docking branch */
+#endif
 
     ImGui_ImplOpenGL3_RenderDrawData (ImGui::GetDrawData ());
 

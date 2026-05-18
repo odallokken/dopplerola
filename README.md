@@ -31,7 +31,7 @@ little glue you need to make a call with Pulse.  The whole demo is one
 | `CMakeLists.txt`        | Build glue. Fetches Dear ImGui via FetchContent.  |
 | `debs/`                 | Pre-built Pulse `.deb` packages for Ubuntu 24.04. |
 | `opt/`, `usr/`          | The extracted contents of the Pulse `.deb`s.      |
-| `pexninja.cpp`          | The much larger reference Pulse client.           |
+| `pexninja/`             | The much larger reference Pulse client (optional, see below). |
 
 ## Build
 
@@ -109,5 +109,25 @@ ImGui window only shows the control panel + status.
 Everything else (the GLFW window, the ImGui form, the status text) is just
 plumbing around those five calls.  If you want to embed the remote video
 inside your own window, look at
-`pulse_options_set_remote_video_window_handle()` — `pexninja.cpp` shows the
-full pattern.
+`pulse_options_set_remote_video_window_handle()` — `pexninja/pexninja.cpp`
+shows the full pattern.
+
+## Building the bigger `pexninja` reference client
+
+`pexninja/` contains a much fuller Pulse client (~12k LoC, lifted from
+another repo). It uses the same `libpexpulse` but layers in ImPlot,
+gl3w, ImGui-Addons (file browser) and GStreamer. It's gated behind a CMake
+option so the default `doppler` build stays lean:
+
+```bash
+sudo apt-get install -y libglib2.0-dev libgstreamer1.0-dev \
+                        libgstreamer-plugins-base1.0-dev libx11-dev
+cmake -S . -B build -DBUILD_PEXNINJA=ON
+cmake --build build -j --target pexninja
+./build/run-pexninja.sh
+```
+
+The extra dependencies (ImPlot, gl3w, ImGui-Addons) are fetched at configure
+time via `FetchContent`. The Dear ImGui tag is the `-docking` variant
+because `pexninja` uses multi-viewport + docking features; the simpler
+`doppler` target keeps building unchanged against the same superset.
