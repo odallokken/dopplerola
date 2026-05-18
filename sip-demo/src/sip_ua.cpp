@@ -186,6 +186,10 @@ static void cb_on_state_changed(pjsip_inv_session * inv, pjsip_event * /*e*/)
             char  buf[4096];
             int   n = pjmedia_sdp_print(remote, buf, sizeof(buf));
             if (n > 0) {
+                std::fprintf(stderr,
+                    "===== SIP: incoming answer SDP (%d bytes) =====\n%.*s"
+                    "===== end SDP =====\n",
+                    n, n, buf);
                 SipAnswer ans;
                 ans.remote_sdp.assign(buf, static_cast<size_t>(n));
                 ans.call_id = impl->active_call_id;
@@ -486,6 +490,21 @@ bool SipUA::place_call(const std::string & target_uri,
         pjsip_dlg_terminate(dlg);
         if (on_failure) on_failure("pjmedia_sdp_validate: " + pj_err(st));
         return false;
+    }
+
+    // Log the outgoing offer SDP exactly as PJSIP will serialise it on the
+    // wire (re-printing the parsed session rather than echoing local_offer
+    // makes any normalisation PJSIP applies visible). Useful for verifying
+    // codecs, ICE candidates, etc. against what Infinity actually sees.
+    {
+        char  buf[4096];
+        int   n = pjmedia_sdp_print(sdp, buf, sizeof(buf));
+        if (n > 0) {
+            std::fprintf(stderr,
+                "===== SIP: outgoing offer SDP (%d bytes) =====\n%.*s"
+                "===== end SDP =====\n",
+                n, n, buf);
+        }
     }
 
     // Invitation session.
