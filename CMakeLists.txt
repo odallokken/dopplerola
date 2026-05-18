@@ -89,7 +89,9 @@ target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
 # ---------------------------------------------------------------------------
 # The demo application
 # ---------------------------------------------------------------------------
-add_executable(doppler src/main.cpp)
+add_executable(doppler
+    src/main.cpp
+    src/udp_rtp_bridge.cpp)
 target_link_libraries(doppler PRIVATE
     imgui
     pexip::pulse
