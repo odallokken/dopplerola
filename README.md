@@ -1,26 +1,44 @@
 # Doppler
 
-A tiny demo that makes a Pexip Infinity video call using the
+A small demo that makes a Pexip Infinity video call using the
 **Pexip Pulse** C API, with **Dear ImGui** as the application layer.
 
-The goal of this repository is to show — in as few lines as possible — how
-little glue you need to make a call with Pulse.  The whole demo is one
-~330-line C++ file (`src/main.cpp`) and one small `CMakeLists.txt`.
+The goal of this repository is to show — with as little glue as possible —
+how to drive Pulse from your own application. Beyond placing a call, the
+demo also doubles as a tiny reference for three slightly more advanced
+Pulse building blocks lifted from `pexninja/pexninja.cpp`:
+
+* In-window rendering of the incoming MAIN video and the self-view via
+  `pulse_data_session_connect_output` + an OpenGL texture.
+* An RTMP ingest listener via `pulse_rtmp_session_connect_input`.
+* A "Twitch streaming" video mix that composites the local camera on
+  top of the RTMP feed via `pulse_video_mix_connect`, with optional
+  camera segmentation (`PULSE_VIDEO_PROCESS_TYPE_SEGMENTATION`).
+
+The whole thing still fits in a single, heavily-commented
+`src/main.cpp` plus one small `CMakeLists.txt`.
 
 ```
-┌─────────────────────────────┐
-│   ImGui (GLFW + OpenGL3)    │   <-- tiny "form" with the call details
-│                             │
-│  Server / Conference / ...  │
-│  [Connect]  [Disconnect]    │
-│                             │
-│  State: Connected           │
-└──────────────┬──────────────┘
-               │ pulse_connect_with_rest_async()
-               ▼
-        ┌───────────────┐
-        │  libpexpulse  │   <-- handles REST, signalling, media,
-        └───────────────┘       and auto-spawns its own video windows
+┌─────────────────────────────────────────────┐
+│         ImGui (GLFW + OpenGL3)              │
+│                                             │
+│  Server / Conference / ...   [Connect]      │
+│  RTMP path / port            [Start RTMP]   │
+│  [x] Camera segmentation     [Twitch mix]   │
+│                                             │
+│  ┌──────── Remote ────────┐  ┌─ Self-view ─┐│
+│  │  (pulled from MAIN     │  │ (pulled    ││
+│  │   data-session)        │  │  from      ││
+│  │                        │  │  SELFVIEW) ││
+│  └────────────────────────┘  └────────────┘│
+└──────────────────────┬──────────────────────┘
+                       │ pulse_connect_with_rest_async()
+                       │ pulse_rtmp_session_connect_input()
+                       │ pulse_video_mix_connect()
+                       ▼
+                ┌───────────────┐
+                │  libpexpulse  │
+                └───────────────┘
 ```
 
 ## What's in the box
@@ -87,8 +105,25 @@ echo /opt/pexip/lib | sudo tee /etc/ld.so.conf.d/pexip.conf && sudo ldconfig
 
 Fill in the **Server** (your Pexip Infinity node, e.g. `vc.example.com`),
 the **Conference** alias and a **Display name**, then press **Connect**.
-Pulse will open its own native windows for self-view and remote video; the
-ImGui window only shows the control panel + status.
+The far-end video and your own self-view will be rendered directly into
+the ImGui window (Pulse's auto-spawn windows are disabled via
+`pulse_options_set_*_window_handle(NULL)`).
+
+### RTMP ingest + "Twitch mix"
+
+Open the **RTMP ingest + Twitch mix** section in the UI, pick a port +
+path (defaults: `1935` / `live`), and press **Start RTMP server**. Then
+publish a stream to it from OBS or ffmpeg, e.g.:
+
+```bash
+ffmpeg -re -i some-video.mp4 -c:v libx264 -c:a aac -f flv \
+       rtmp://localhost:1935/live
+```
+
+Press **Enable Twitch mix** and Pulse will composite your camera as a
+PIP on top of the RTMP feed and send the result as the MAIN outgoing
+video. Toggle **Camera segmentation** to key out your camera background
+for the full Twitch streaming look.
 
 > The binary has its RPATH set to `/opt/pexip/lib`, so the direct dependency
 > `libpexpulse.so` is found without help.  The launcher script handles the
@@ -96,21 +131,31 @@ ImGui window only shows the control panel + status.
 
 ## Code tour
 
-`src/main.cpp` walks you through the five lifecycle steps inline:
+`src/main.cpp` walks you through the lifecycle steps inline:
 
 1. `pulse_new()` — create a Pulse instance.
 2. `pulse_options_set_*()` — register a small set of callbacks
-   (`conference state`, `application user-agent`).
-3. `pulse_connect_with_rest_async()` — kick off the call.
+   (`conference state`, `application user-agent`) and pin the video
+   window handles to `NULL` so Pulse won't auto-spawn its own windows.
+3. `pulse_data_session_connect_output()` — open RGBA "pull" sessions
+   for MAIN and SELFVIEW so we can render the frames ourselves.
+4. `pulse_connect_with_rest_async()` — kick off the call.
    The progress and async-result callbacks feed our status panel.
-4. `pulse_disconnect_async()` — tear it down.
-5. `pulse_free()` — release the handle.
+5. `pulse_disconnect_async()` — tear it down.
+6. `pulse_free()` — release the handle.
 
-Everything else (the GLFW window, the ImGui form, the status text) is just
-plumbing around those five calls.  If you want to embed the remote video
-inside your own window, look at
-`pulse_options_set_remote_video_window_handle()` — `pexninja/pexninja.cpp`
-shows the full pattern.
+On top of that, the demo wires in the RTMP ingest + video MIX building
+blocks: `pulse_rtmp_session_connect_input()` opens an RTMP listener on
+the PRESENTATION slot, and `pulse_video_mix_input_from_device` +
+`pulse_video_mix_input_from_rtmp_session` + `pulse_video_mix_connect`
+composite the camera on top of the RTMP feed (optionally with
+`PULSE_VIDEO_PROCESS_TYPE_SEGMENTATION`) and ship the result out on
+MAIN.
+
+Everything else (the GLFW window, the ImGui form, the status text, the
+video tiles, the RTMP + mix wiring) is just plumbing around those calls.
+The bigger sibling `pexninja/pexninja.cpp` is where all of these patterns
+were lifted from — it's the place to look when you outgrow the demo.
 
 ## Building the bigger `pexninja` reference client
 
