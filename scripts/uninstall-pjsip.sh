@@ -26,7 +26,9 @@ for arg in "$@"; do
     case "$arg" in
         --dry-run|-n) DRY_RUN=1 ;;
         -h|--help)
-            sed -n '2,20p' "$0"
+            # Print the header comment block (everything from the opening
+            # `# ---` line up to and including the matching closing one).
+            sed -n '/^# ---/,/^# ---/p' "$0"
             exit 0
             ;;
         *)
