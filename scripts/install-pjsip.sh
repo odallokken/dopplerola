@@ -39,7 +39,8 @@ apt-get install -y \
     pkg-config \
     curl \
     libssl-dev \
-    libasound2-dev
+    libasound2-dev \
+    uuid-dev
 
 # ---- Fetch the source tarball ---------------------------------------------
 mkdir -p "${BUILD_DIR}"

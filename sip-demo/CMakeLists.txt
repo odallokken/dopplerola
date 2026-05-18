@@ -19,6 +19,21 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(PJPROJECT REQUIRED IMPORTED_TARGET libpjproject)
 message(STATUS "Found PJSIP via pkg-config: ${PJPROJECT_VERSION}")
 
+# PJSIP's pjlib uses libuuid for GUID generation when uuid.h is present at
+# build time, but its libpjproject.pc doesn't propagate `-luuid` to consumers.
+# Probe libuuid via pkg-config (preferred — apt: `uuid-dev`) and fall back to
+# searching for the bare library if .pc isn't available.
+pkg_check_modules(UUID IMPORTED_TARGET uuid)
+if(NOT UUID_FOUND)
+    find_library(UUID_LIBRARY NAMES uuid)
+    if(NOT UUID_LIBRARY)
+        message(FATAL_ERROR
+            "libuuid not found - PJSIP's pjlib links against uuid_generate(). "
+            "Install it with:  sudo apt-get install uuid-dev")
+    endif()
+    message(STATUS "Found libuuid: ${UUID_LIBRARY}")
+endif()
+
 # ---- Dear ImGui (reuses the parent's FetchContent declaration) ------------
 # The parent CMakeLists.txt already calls FetchContent_MakeAvailable(imgui),
 # so imgui_SOURCE_DIR is in scope here. We compile our own little imgui
@@ -50,6 +65,7 @@ target_link_libraries(doppler-sip PRIVATE
     doppler_sip_imgui
     pexip::pulse
     PkgConfig::PJPROJECT
+    $<IF:$<BOOL:${UUID_FOUND}>,PkgConfig::UUID,${UUID_LIBRARY}>
     Threads::Threads)
 
 # Same RPATH treatment as the parent's `doppler` target so libpexpulse.so
