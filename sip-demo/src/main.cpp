@@ -135,7 +135,7 @@ static void on_pulse_log(void * /*user_context*/, PulseDebugLevel level,
                          int /*line*/, const char * /*object_debug_str*/,
                          const char * message)
 {
-    if (level > PULSE_LEVEL_WARNING) return;
+    //if (level > PULSE_LEVEL_WARNING) return;
     std::fprintf(stderr, "[pulse:%s] %s\n",
                  category ? category : "?", message ? message : "");
 }
