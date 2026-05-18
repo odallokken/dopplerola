@@ -6,7 +6,9 @@
 //  Pulse's *built-in* REST + signalling path (pulse_connect_with_rest_async).
 //  This one instead uses Pulse purely as a media engine:
 //
-//      1. pulse_new() + the usual options/callback registration.
+//      1. pulse_new_external_rest() + the usual options/callback registration.
+//         (external-rest mode tells Pulse "the application owns signalling",
+//         which is exactly what we want when PJSIP is driving SIP.)
 //      2. pulse_setup_stage_1_from_structure(is_sip=true)
 //                          -> Pulse hands us a local SDP offer.
 //      3. We give that offer to PJSIP, which sends a SIP INVITE.
@@ -136,6 +138,22 @@ static void on_pulse_log(void * /*user_context*/, PulseDebugLevel level,
     if (level > PULSE_LEVEL_WARNING) return;
     std::fprintf(stderr, "[pulse:%s] %s\n",
                  category ? category : "?", message ? message : "");
+}
+
+// Fired by Pulse (external-rest mode) when its local SDP changes after
+// stage 2 — e.g. it added a content channel, or renegotiated codecs. A
+// real client would forward this as a SIP re-INVITE via PJSIP; for this
+// demo we just surface it in the status line so the user can see it
+// happen.
+static void on_pulse_update_sdp(void * user_context, const char * update_sdp)
+{
+    auto * app = static_cast<AppState *>(user_context);
+    const size_t len = update_sdp ? std::strlen(update_sdp) : 0;
+    char buf[96];
+    std::snprintf(buf, sizeof(buf),
+                  "Pulse requested SDP update (%zu bytes) - re-INVITE not implemented in demo.",
+                  len);
+    set_status(*app, buf);
 }
 
 // ----------------------------------------------------------------------------
@@ -404,9 +422,16 @@ int main()
     pulse_global_logger_callback(on_pulse_log, nullptr);
 
     AppState app;
-    app.pulse = pulse_new();
+    // External-rest mode: PJSIP owns SIP signalling, Pulse is purely a
+    // media engine. The update_sdp callback fires if Pulse later wants
+    // to renegotiate (e.g. add a content stream); we register it against
+    // `&app` so it can post into the UI status line.
+    PulseExternalRestCallbackConfig ext_rest_cfg{};
+    ext_rest_cfg.update_sdp_callback      = on_pulse_update_sdp;
+    ext_rest_cfg.update_sdp_user_context  = &app;
+    app.pulse = pulse_new_external_rest(ext_rest_cfg);
     if (!app.pulse) {
-        std::fprintf(stderr, "pulse_new() returned NULL\n");
+        std::fprintf(stderr, "pulse_new_external_rest() returned NULL\n");
         return 1;
     }
     install_callbacks(app);
