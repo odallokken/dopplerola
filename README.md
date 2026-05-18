@@ -52,7 +52,7 @@ The whole thing still fits in a single, heavily-commented
 | `opt/`, `usr/`          | The extracted contents of the Pulse `.deb`s.      |
 | `pexninja/`             | The much larger reference Pulse client (optional, see below). |
 | `sip-demo/`             | A second tiny demo: Pulse as media engine + PJSIP for signalling (optional, see below). |
-| `scripts/`              | Helper scripts (currently just `install-pjsip.sh`).            |
+| `scripts/`              | Helper scripts: `install-pjsip.sh` / `uninstall-pjsip.sh`.     |
 
 ## Build
 
@@ -241,6 +241,13 @@ sudo ./scripts/install-pjsip.sh
 cmake -S . -B build -DBUILD_DOPPLER_SIP=ON
 cmake --build build -j --target doppler-sip
 ./build/run-doppler-sip.sh
+```
+
+To remove a PJSIP install done by the script (e.g. to upgrade to a newer
+version), use the matching uninstaller:
+
+```bash
+sudo ./scripts/uninstall-pjsip.sh           # or --dry-run to preview
 ```
 
 See [`sip-demo/README.md`](sip-demo/README.md) for the flow diagram and
