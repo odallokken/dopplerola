@@ -177,9 +177,13 @@ Conf A ─┤         │                                   │         ├─ C
 
 A small background thread pumps `pulse_data_session_pull_frame_data`
 from one leg's OUTPUT straight into `pulse_data_session_push_frame` on
-the other leg's INPUT, both for audio (S16LE PCM, 48 kHz, mono) and
-video (RGBA).  No system mic, camera or speaker is ever touched — the
-data sessions take their place entirely.
+the other leg's INPUT, both for audio (F32LE PCM, 48 kHz, mono) and
+video (I420 planar YUV).  No system mic, camera or speaker is ever
+touched — the data sessions take their place entirely.
+
+For the on-screen preview tiles the pump thread converts I420 to RGBA
+on the CPU (BT.601 limited-range) before handing the buffer to the UI
+thread, so the GL upload path stays trivial.
 
 Because everything that crosses the gap is raw, decoded samples — no
 container, no signalling, no metadata — the bridge is the kind of

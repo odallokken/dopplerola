@@ -12,7 +12,7 @@
 //      pulse1.OUTPUT (audio/video) --copy--> pulse2.INPUT (audio/video)
 //      pulse2.OUTPUT (audio/video) --copy--> pulse1.INPUT (audio/video)
 //
-//  Because the bridge sees fully-decoded raw frames (RGBA video, S16LE
+//  Because the bridge sees fully-decoded raw frames (I420 video, F32LE
 //  PCM audio) it can be inspected/verified as honest-to-goodness media
 //  with no container, no signalling, no metadata, which is exactly what
 //  you want as the "guard" of a cross-domain solution: anything that
@@ -76,7 +76,7 @@
 
 static constexpr uint32_t kAudioRateHz   = 48000;
 static constexpr uint32_t kAudioChannels = 1;
-static constexpr const char * kVideoCaps = "video/x-raw, format=RGBA";
+static constexpr const char * kVideoCaps = "video/x-raw, format=I420";
 
 // ----------------------------------------------------------------------------
 //  Per-leg state
@@ -255,7 +255,7 @@ static PulseDataSessionConfig * make_audio_config()
     PulseDataSessionConfig * cfg =
         pulse_data_session_config_new(PULSE_DATA_SESSION_AUDIO_FROM_VALUES);
     pulse_data_session_config_audio_from_values(cfg,
-        PULSE_MEDIA_AUDIO_FORMAT_S16LE,
+        PULSE_MEDIA_AUDIO_FORMAT_F32LE,
         PULSE_MEDIA_AUDIO_LAYOUT_INTERLEAVED,
         kAudioRateHz, kAudioChannels);
     return cfg;
@@ -387,8 +387,54 @@ static void start_hangup(LegState & leg)
 //  makes this loop dull on purpose: we never touch headers, codecs,
 //  metadata or framing.  All we ever move is the `data` pointer of the
 //  PulseDataSessionFrameData struct, which by construction can only
-//  contain S16LE PCM samples or RGBA pixels.
+//  contain F32LE PCM samples or I420 (planar YUV) pixels.
 // ----------------------------------------------------------------------------
+
+// Convert one I420 (planar YUV 4:2:0) frame to RGBA, writing into `dst`.
+// `dst` is resized to w*h*4 bytes.  Uses the BT.601 limited-range
+// coefficients with a clamp — good enough for a debug preview.
+static void i420_to_rgba(const uint8_t * src, int src_size,
+                         int w, int h,
+                         std::vector<uint8_t> & dst)
+{
+    const int y_size  = w * h;
+    const int uv_w    = w / 2;
+    const int uv_h    = h / 2;
+    const int uv_size = uv_w * uv_h;
+    if (src_size < y_size + 2 * uv_size) {
+        dst.clear();
+        return;
+    }
+    const uint8_t * Y = src;
+    const uint8_t * U = src + y_size;
+    const uint8_t * V = src + y_size + uv_size;
+
+    dst.resize(static_cast<size_t>(w) * h * 4);
+    auto clamp_u8 = [](int v) -> uint8_t {
+        if (v < 0)   return 0;
+        if (v > 255) return 255;
+        return static_cast<uint8_t>(v);
+    };
+
+    for (int j = 0; j < h; ++j) {
+        const uint8_t * y_row = Y + j * w;
+        const uint8_t * u_row = U + (j / 2) * uv_w;
+        const uint8_t * v_row = V + (j / 2) * uv_w;
+        uint8_t * rgba_row    = dst.data() + j * w * 4;
+        for (int i = 0; i < w; ++i) {
+            int yv = static_cast<int>(y_row[i])      - 16;
+            int uv = static_cast<int>(u_row[i / 2])  - 128;
+            int vv = static_cast<int>(v_row[i / 2])  - 128;
+            int r = (298 * yv           + 409 * vv + 128) >> 8;
+            int g = (298 * yv - 100 * uv - 208 * vv + 128) >> 8;
+            int b = (298 * yv + 516 * uv           + 128) >> 8;
+            rgba_row[i * 4 + 0] = clamp_u8(r);
+            rgba_row[i * 4 + 1] = clamp_u8(g);
+            rgba_row[i * 4 + 2] = clamp_u8(b);
+            rgba_row[i * 4 + 3] = 255;
+        }
+    }
+}
 
 static void cache_latest_video(LegState & leg,
                                const uint8_t * data, int data_size,
@@ -396,10 +442,12 @@ static void cache_latest_video(LegState & leg,
 {
     if (!data || data_size <= 0 || w <= 0 || h <= 0) return;
     std::lock_guard<std::mutex> lock(leg.latest_video_mutex);
-    leg.latest_video_rgba.assign(data, data + data_size);
+    // The wire format is I420; convert to RGBA up-front so the UI
+    // thread can do a plain glTexImage2D upload.
+    i420_to_rgba(data, data_size, w, h, leg.latest_video_rgba);
     leg.latest_video_w     = w;
     leg.latest_video_h     = h;
-    leg.latest_video_dirty = true;
+    leg.latest_video_dirty = !leg.latest_video_rgba.empty();
 }
 
 // Pull one frame for one media type from `src` and push it into `dst`.
@@ -551,14 +599,14 @@ static void draw_leg_panel(LegState & leg, float tile_w)
 
     ImGui::Separator();
     ImGui::TextUnformatted("Received from this leg (forwarded to the other):");
-    ImGui::BulletText("Audio: %llu frames, %llu bytes (S16LE %u Hz, %u ch)",
+    ImGui::BulletText("Audio: %llu frames, %llu bytes (F32LE %u Hz, %u ch)",
                       (unsigned long long)leg.audio_frames_in.load(),
                       (unsigned long long)leg.audio_bytes_in.load(),
                       kAudioRateHz, kAudioChannels);
     ImGui::BulletText("Video: %llu frames, %llu bytes (%s, %dx%d)",
                       (unsigned long long)leg.video_frames_in.load(),
                       (unsigned long long)leg.video_bytes_in.load(),
-                      "RGBA", leg.preview_w, leg.preview_h);
+                      "I420", leg.preview_w, leg.preview_h);
     ImGui::TextUnformatted("Injected into this leg (received from the other):");
     ImGui::BulletText("Audio: %llu frames, %llu bytes",
                       (unsigned long long)leg.audio_frames_out.load(),
