@@ -46,6 +46,7 @@ The whole thing still fits in a single, heavily-commented
 | File                    | Purpose                                           |
 | ----------------------- | ------------------------------------------------- |
 | `src/main.cpp`          | The whole application — heavily commented.        |
+| `src/gateway.cpp`       | A sibling app (`pulse_gateway`) that runs two Pulse instances and bridges raw audio + video between two conferences. |
 | `CMakeLists.txt`        | Build glue. Fetches Dear ImGui via FetchContent.  |
 | `debs/`                 | Pre-built Pulse `.deb` packages for Ubuntu 24.04. |
 | `opt/`, `usr/`          | The extracted contents of the Pulse `.deb`s.      |
@@ -157,7 +158,48 @@ video tiles, the RTMP + mix wiring) is just plumbing around those calls.
 The bigger sibling `pexninja/pexninja.cpp` is where all of these patterns
 were lifted from — it's the place to look when you outgrow the demo.
 
-## Building the bigger `pexninja` reference client
+## The `pulse_gateway` sibling demo
+
+`src/gateway.cpp` builds into a second binary, `pulse_gateway`, that
+demonstrates how to use the Pulse data-session **input** *and* **output**
+APIs together to build a "two-Pulse bridge".
+
+Two independent Pulse instances each place their own call:
+
+```
+        ┌─────────┐     OUTPUT (raw RGBA / S16LE)     ┌─────────┐
+        │ pulse 1 │ ────────────────────────────────► │ pulse 2 │
+Conf A ─┤         │                                   │         ├─ Conf B
+        │         │ ◄──────────────────────────────── │         │
+        └─────────┘     OUTPUT (raw RGBA / S16LE)     └─────────┘
+                       (pushed into the other leg's INPUT)
+```
+
+A small background thread pumps `pulse_data_session_pull_frame_data`
+from one leg's OUTPUT straight into `pulse_data_session_push_frame` on
+the other leg's INPUT, both for audio (S16LE PCM, 48 kHz, mono) and
+video (RGBA).  No system mic, camera or speaker is ever touched — the
+data sessions take their place entirely.
+
+Because everything that crosses the gap is raw, decoded samples — no
+container, no signalling, no metadata — the bridge is the kind of
+"guard" you'd put at the boundary of a **cross-domain solution**: by
+construction the only thing that can pass through is honest audio and
+video.
+
+The ImGui UI has two side-by-side panels (one per leg) with their own
+**Call** / **Hang up** buttons, plus live counters of audio/video bytes
+and frames being forwarded in each direction, and a small RGBA preview
+of what each leg is relaying.
+
+Build + run:
+
+```bash
+cmake --build build -j --target pulse_gateway
+./build/run-pulse-gateway.sh
+```
+
+
 
 `pexninja/` contains a much fuller Pulse client (~12k LoC, lifted from
 another repo). It uses the same `libpexpulse` but layers in ImPlot,
