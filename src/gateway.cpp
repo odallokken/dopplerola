@@ -143,6 +143,15 @@ struct LegState
     GLuint preview_texture = 0;
     int    preview_w       = 0;
     int    preview_h       = 0;
+
+    // Last video width/height we successfully pushed INTO this leg's
+    // INPUT data session.  When the source resolution changes we
+    // attach a fresh `update_config` to the next push so Pulse knows
+    // the new dimensions — the raw PulseDataSessionFrameData itself
+    // only carries `data` and `data_size`, not the resolution.  Only
+    // touched from the pump thread.
+    int    pushed_video_w  = 0;
+    int    pushed_video_h  = 0;
 };
 
 // Whole-application state.
@@ -261,11 +270,51 @@ static PulseDataSessionConfig * make_audio_config()
     return cfg;
 }
 
-static PulseDataSessionConfig * make_video_config()
+static PulseDataSessionConfig * make_video_input_config()
 {
+    // The INPUT side is configured with VIDEO_FROM_VALUES so we can
+    // later send an `update_config` (also VIDEO_FROM_VALUES) on each
+    // pushed frame that tweaks the dimensions when the source's
+    // resolution changes.  PulseDataSessionFrameData has no
+    // width/height field of its own, so update_config is the only way
+    // to keep Pulse in sync — without it Pulse internals crash trying
+    // to make sense of the raw I420 bytes.
+    //
+    // The placeholder dims/framerate here are overwritten by the
+    // first per-frame update_config we attach.
+    PulseDataSessionConfig * cfg =
+        pulse_data_session_config_new(PULSE_DATA_SESSION_VIDEO_FROM_VALUES);
+    PulseDimensions dims{640, 360};
+    PulseFramerate  fps{30, 1};
+    pulse_data_session_config_video_from_values(cfg,
+        PULSE_MEDIA_PIXEL_FORMAT_I420, dims, fps);
+    return cfg;
+}
+
+static PulseDataSessionConfig * make_video_output_config()
+{
+    // The OUTPUT side just pulls already-decoded frames, so caps are
+    // enough: Pulse fills in the actual dimensions on every pulled
+    // PulseDataSessionFrameData and we read them back with
+    // pulse_frame_data_get_resolution().
     PulseDataSessionConfig * cfg =
         pulse_data_session_config_new(PULSE_DATA_SESSION_VIDEO_FROM_CAPS);
     pulse_data_session_config_video_from_caps(cfg, kVideoCaps);
+    return cfg;
+}
+
+// Build a VIDEO_FROM_VALUES config that describes a single resolution
+// — used as the `update_config` on push frames when the source
+// resolution changes.  Caller owns the returned config and must free
+// it after pulse_data_session_push_frame() returns.
+static PulseDataSessionConfig * make_video_update_config(int w, int h)
+{
+    PulseDataSessionConfig * cfg =
+        pulse_data_session_config_new(PULSE_DATA_SESSION_VIDEO_FROM_VALUES);
+    PulseDimensions dims{static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
+    PulseFramerate  fps{30, 1};
+    pulse_data_session_config_video_from_values(cfg,
+        PULSE_MEDIA_PIXEL_FORMAT_I420, dims, fps);
     return cfg;
 }
 
@@ -275,9 +324,9 @@ static PulseDataSessionConfig * make_video_config()
 static void open_data_sessions(LegState & leg)
 {
     PulseDataSessionConfig * a_in  = make_audio_config();
-    PulseDataSessionConfig * v_in  = make_video_config();
+    PulseDataSessionConfig * v_in  = make_video_input_config();
     PulseDataSessionConfig * a_out = make_audio_config();
-    PulseDataSessionConfig * v_out = make_video_config();
+    PulseDataSessionConfig * v_out = make_video_output_config();
 
     pulse_data_session_connect_input (leg.pulse, a_in,  PULSE_MEDIA_CONTENT_MAIN);
     pulse_data_session_connect_input (leg.pulse, v_in,  PULSE_MEDIA_CONTENT_MAIN);
@@ -463,25 +512,45 @@ static bool forward_one(LegState & src, LegState & dst, PulseMediaType media)
         return false;
     }
 
-    // For video, also stash a copy for the UI preview.
+    // For video, also stash a copy for the UI preview and grab the
+    // resolution so we can tell `dst` about any size change.
+    int video_w = 0;
+    int video_h = 0;
     if (media == PULSE_MEDIA_VIDEO) {
-        int w = 0, h = 0;
-        if (pulse_frame_data_get_resolution(frame_data, &w, &h))
+        if (pulse_frame_data_get_resolution(frame_data, &video_w, &video_h))
             cache_latest_video(src, frame_data->data,
-                               frame_data->data_size, w, h);
+                               frame_data->data_size, video_w, video_h);
     }
 
     // Build the PulseDataSessionFrame and push to the other leg's INPUT.
-    PulseDataSessionFrame out_frame{};
+    PulseDataSessionFrame    out_frame{};
+    PulseDataSessionConfig * upd_cfg = nullptr;
     if (media == PULSE_MEDIA_AUDIO) {
         out_frame.audio.data      = frame_data->data;
         out_frame.audio.data_size = frame_data->data_size;
     } else {
         out_frame.video.data      = frame_data->data;
         out_frame.video.data_size = frame_data->data_size;
+        // PulseDataSessionFrameData has no width/height field, so the
+        // only way to keep dst's input session in sync with the
+        // source's resolution is to attach an update_config whenever
+        // it changes.  Without this Pulse internally has no idea how
+        // to interpret the raw I420 plane sizes and crashes.
+        if (video_w > 0 && video_h > 0 &&
+            (video_w != dst.pushed_video_w || video_h != dst.pushed_video_h)) {
+            upd_cfg = make_video_update_config(video_w, video_h);
+            out_frame.update_config = upd_cfg;
+        }
     }
     PulseError push_err = pulse_data_session_push_frame(dst.pulse, &out_frame,
                                                         PULSE_MEDIA_CONTENT_MAIN);
+    if (upd_cfg) {
+        pulse_data_session_config_free(upd_cfg);
+        if (push_err == PULSE_SUCCESS) {
+            dst.pushed_video_w = video_w;
+            dst.pushed_video_h = video_h;
+        }
+    }
 
     if (media == PULSE_MEDIA_AUDIO) {
         src.audio_bytes_in.fetch_add(static_cast<uint64_t>(frame_data->data_size));
