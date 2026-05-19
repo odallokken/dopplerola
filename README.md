@@ -167,11 +167,11 @@ APIs together to build a "two-Pulse bridge".
 Two independent Pulse instances each place their own call:
 
 ```
-        ┌─────────┐     OUTPUT (raw RGBA / S16LE)     ┌─────────┐
+        ┌─────────┐     OUTPUT (raw I420 / F32LE)     ┌─────────┐
         │ pulse 1 │ ────────────────────────────────► │ pulse 2 │
 Conf A ─┤         │                                   │         ├─ Conf B
         │         │ ◄──────────────────────────────── │         │
-        └─────────┘     OUTPUT (raw RGBA / S16LE)     └─────────┘
+        └─────────┘     OUTPUT (raw I420 / F32LE)     └─────────┘
                        (pushed into the other leg's INPUT)
 ```
 

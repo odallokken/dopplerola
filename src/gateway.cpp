@@ -114,8 +114,8 @@ struct LegState
     // ---- Bridge-forwarding counters (verifiable raw-media metrics) ----
     //
     // Every byte that makes it across the gateway lands on these
-    // counters, which the UI shows live.  Because the data is raw RGBA
-    // and PCM, the counters genuinely measure "audio bytes" and
+    // counters, which the UI shows live.  Because the data is raw I420
+    // and F32LE PCM, the counters genuinely measure "audio bytes" and
     // "video bytes" with no container/metadata overhead.
     std::atomic<uint64_t> audio_bytes_in{0};   // pulled from this leg's OUTPUT
     std::atomic<uint64_t> video_bytes_in{0};
@@ -240,10 +240,10 @@ static void on_pulse_log(void * /*user_context*/, PulseDebugLevel level,
 //
 //  We need four sessions per leg on PULSE_MEDIA_CONTENT_MAIN:
 //
-//      - audio  INPUT   (we push raw PCM into the call)
-//      - video  INPUT   (we push raw RGBA into the call)
-//      - audio  OUTPUT  (we pull raw PCM from the call)
-//      - video  OUTPUT  (we pull raw RGBA from the call)
+//      - audio  INPUT   (we push raw F32LE PCM into the call)
+//      - video  INPUT   (we push raw I420 into the call)
+//      - audio  OUTPUT  (we pull raw F32LE PCM from the call)
+//      - video  OUTPUT  (we pull raw I420 from the call)
 //
 //  These collectively replace the system mic/camera (INPUT) and the
 //  system speaker / on-screen video window (OUTPUT) entirely — the
