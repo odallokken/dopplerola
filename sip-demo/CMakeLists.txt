@@ -59,7 +59,8 @@ target_link_libraries(doppler_sip_imgui PUBLIC glfw OpenGL::GL)
 # ---- The doppler-sip executable -------------------------------------------
 add_executable(doppler-sip
     src/main.cpp
-    src/sip_ua.cpp)
+    src/sip_ua.cpp
+    src/app_transport.cpp)
 
 target_link_libraries(doppler-sip PRIVATE
     doppler_sip_imgui

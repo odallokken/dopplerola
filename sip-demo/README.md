@@ -20,30 +20,46 @@ wire in an `INVITE`.
 │  State: In call              │
 └──────────────┬───────────────┘
                │
+               │ 0. pulse_options_set_app_transport(...) - register our
+               │    PulseAppPacketCallback so Pulse hands outbound RTP/RTCP
+               │    to us instead of writing it to its own UDP sockets.
+               │
                │ 1. pulse_setup_stage_1_from_structure(is_sip=true)
-               │    -> local SDP offer
+               │    -> local SDP offer (ports/IP point at Pulse internals)
                ▼
         ┌──────────────┐                   ┌────────────┐
         │ libpexpulse  │                   │   PJSIP    │
         │  (media)     │                   │ (signalling)
         └──────┬───────┘                   └─────┬──────┘
-               │  2. offer SDP ───────────────▶  │
+               │  2. AppTransport binds one UDP   │
+               │     socket per m=/RTP+RTCP wire,│
+               │     rewrites the offer's m=/c=  │
+               │     /a=rtcp lines to advertise  │
+               │     OUR ports/IP.               │
+               │  3. rewritten offer SDP ──────▶ │
                │                                 │  INVITE → pexipdemo.com
                │                                 │  ◀── 200 OK (answer SDP)
                │  4. answer SDP + Call-ID ◀───── │
-               │                                 │
-               │ 5. pulse_setup_stage_2_from_structure
+               │  5. AppTransport parses answer  │
+               │     for remote IP+ports, fills  │
+               │     channel→sockaddr table.     │
+               │ 6. pulse_setup_stage_2_from_structure
                ▼
-        media flows
+        ┌─────────────────────────────────────────────────────┐
+        │ media flows:                                        │
+        │   Pulse -> PulseAppPacketCallback -> sendto() ----▶ │
+        │   recvfrom() -> pulse_app_transport_push() -> Pulse │
+        └─────────────────────────────────────────────────────┘
 ```
 
 ## What's in the box
 
-| File                  | Purpose                                                 |
-| --------------------- | ------------------------------------------------------- |
-| `src/main.cpp`        | GLFW + ImGui + Pulse glue, almost identical to the REST demo. |
-| `src/sip_ua.h/.cpp`   | Minimal PJSIP wrapper. TCP only, no REGISTER, one outbound call at a time. |
-| `CMakeLists.txt`      | Build glue. Reuses the parent project's `pexip::pulse` imported target and Dear ImGui FetchContent. |
+| File                          | Purpose                                                 |
+| ----------------------------- | ------------------------------------------------------- |
+| `src/main.cpp`                | GLFW + ImGui + Pulse glue, almost identical to the REST demo. |
+| `src/sip_ua.h/.cpp`           | Minimal PJSIP wrapper. TCP only, no REGISTER, one outbound call at a time. |
+| `src/app_transport.h/.cpp`    | Owns one UDP socket per `PulseAppChannelId` wire; bridges Pulse's app-transport callback to the sockets and the SIP peer. Includes the offer SDP rewriter and the answer SDP remote-endpoint parser. |
+| `CMakeLists.txt`              | Build glue. Reuses the parent project's `pexip::pulse` imported target and Dear ImGui FetchContent. |
 
 ## Prerequisites
 
@@ -82,13 +98,27 @@ bindings, same auto-spawned video windows.
 
 ## Notes / things to investigate
 
+* **App-transport `.so` mismatch**: the channel-aware app-transport API
+  (`PulseAppChannelId`, the 4-arg `PulseAppPacketCallback`, etc.) is what
+  this demo's `app_transport.cpp` is written against — those headers
+  shipped in the repo on May 20 2026. The matching `libpexpulse.so` has
+  **not** shipped yet, so the binary will compile and link (the legacy
+  symbol names are unchanged) but will **misbehave at runtime** until the
+  new `.so` is in place. The link itself is unsound — the old `.so`'s
+  `pulse_app_transport_push` is the 3-arg variant.
+* **Local IPv4 address**: `AppTransport` advertises `127.0.0.1` in the
+  rewritten SDP by default. Set `DOPPLER_SIP_LOCAL_IP=<routable-addr>`
+  before launching to make the demo work across a network.
 * `PulseSetupStage2Config::call_uuid` is set to the SIP **Call-ID** of the
   outgoing dialog. This is a placeholder choice — Pulse's REST path normally
   uses the Infinity-side call UUID. Revisit once we know what Pulse actually
   uses this field for in pure-SIP mode.
-* Transport is TCP only and there's no SIP REGISTER — this is a "place a
-  direct INVITE" demo, nothing more. TCP is the deliberate choice (Pexip
-  Infinity prefers it, and a video INVITE easily exceeds PJSIP's UDP MTU
-  threshold). Add TLS / REGISTER if/when needed.
+* Transport for SIP signalling is TCP only and there's no SIP REGISTER —
+  this is a "place a direct INVITE" demo, nothing more. TCP is the
+  deliberate choice (Pexip Infinity prefers it, and a video INVITE easily
+  exceeds PJSIP's UDP MTU threshold). Add TLS / REGISTER if/when needed.
+* App-transport is IPv4-only here and supports `a=rtcp-mux` on or off
+  per `m=` section. No SRTP / DTLS — the app-transport API surfaces
+  plain RTP only.
 * The user agent identifies as `doppler-sip/<version>` on both the SIP
   `User-Agent` header and Pulse's application user-agent string.

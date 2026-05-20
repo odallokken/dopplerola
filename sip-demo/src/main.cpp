@@ -35,6 +35,7 @@
 
 #include <pexpulse/pulse.h>
 
+#include "app_transport.h"
 #include "sip_ua.h"
 
 // ----------------------------------------------------------------------------
@@ -54,8 +55,9 @@ enum class CallStage {
 
 struct AppState
 {
-    Pulse *           pulse = nullptr;
-    doppler::SipUA *  sip   = nullptr;
+    Pulse *                  pulse     = nullptr;
+    doppler::SipUA *         sip       = nullptr;
+    doppler::AppTransport *  transport = nullptr;
 
     // The single input the demo needs: a SIP URI to call.
     char sip_uri[256]      = "";          // e.g. "havard@pexipdemo.com"
@@ -202,6 +204,18 @@ static void uninstall_callbacks(AppState & app)
 // the 200 OK / answer SDP.
 static void on_sip_answer(AppState & app, const doppler::SipAnswer & ans)
 {
+    // Hand the answer's IP + port table to the app-transport bridge so its
+    // outbound callback knows where to sendto(). Must happen before
+    // pulse_setup_stage_2_from_structure() returns, because Pulse will
+    // start invoking the outbound callback as soon as stage 2 succeeds.
+    if (app.transport) {
+        std::string err = app.transport->configure_remote_answer(ans.remote_sdp);
+        if (!err.empty()) {
+            set_status(app, std::string("app-transport: ") + err);
+            return;
+        }
+    }
+
     // The Call-ID is what we (for now) feed into Pulse's call_uuid slot —
     // see the README for the open question on this.
     PulseSetupStage2Config cfg{};
@@ -276,6 +290,21 @@ static void start_call(AppState & app)
     }
     // Copy the SDP out immediately — Pulse owns the underlying buffer.
     std::string local_sdp = local_sdp_ptr;
+
+    // Replace the m=/c=/a=rtcp ports in Pulse's offer with the ports of
+    // the UDP sockets the AppTransport owns, so the SIP peer sends RTP to
+    // *us* and we relay it back into Pulse via pulse_app_transport_push().
+    if (app.transport) {
+        std::string xport_err;
+        std::string rewritten = app.transport->configure_local_offer(local_sdp, xport_err);
+        if (!xport_err.empty()) {
+            set_status(app, std::string("app-transport: ") + xport_err);
+            app.stage.store(static_cast<int>(CallStage::Idle));
+            return;
+        }
+        local_sdp = std::move(rewritten);
+    }
+
     app.stage.store(static_cast<int>(CallStage::Stage1Done));
 
     // ---- Send the SIP INVITE ------------------------------------------
@@ -435,6 +464,22 @@ int main()
         return 1;
     }
     install_callbacks(app);
+
+    // ---- Boot the application-owned RTP/RTCP transport -------------------
+    // This must happen BEFORE pulse_setup_stage_1 (i.e. before any connect
+    // happens) - pulse_options_set_app_transport refuses once the client
+    // is connected. Sockets aren't bound yet; that happens inside
+    // configure_local_offer() once we know how many wires the offer needs.
+    doppler::AppTransport transport;
+    PulseError xport_err = transport.bind_to_pulse(app.pulse);
+    if (xport_err != PULSE_SUCCESS) {
+        std::fprintf(stderr,
+                     "pulse_options_set_app_transport failed: %s\n",
+                     pulse_strerror(xport_err));
+        // Carry on so the UI still surfaces the error.
+    }
+    app.transport = &transport;
+
     connect_default_devices(app);
 
     // ---- Boot PJSIP ------------------------------------------------------
@@ -467,6 +512,10 @@ int main()
     sip.stop();                     // sends BYE if needed
     if (pulse_is_connected(app.pulse))
         pulse_disconnect(app.pulse, nullptr);
+    // Stop the reader thread, close sockets, clear the app-transport
+    // binding - all before pulse_free() so Pulse never sees a dangling
+    // callback while it's tearing the media engine down.
+    transport.shutdown();
     uninstall_callbacks(app);
     pulse_free(app.pulse);
 
