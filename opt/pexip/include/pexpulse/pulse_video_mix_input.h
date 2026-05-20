@@ -179,13 +179,13 @@ PulseError pulse_video_mix_input_from_rtsp_session (Pulse * client, PulseRtspSes
  *                    pulse_rtsp_session_connect_input().
  * @param stream_id   A stream id obtained via pulse_rtsp_stream_get_id() on
  *                    a #PulseRtspStream returned by an iterator created with
- *                    pulse_rtsp_session_stream_iterator_new(@session_id,
+ *                    pulse_rtsp_session_stream_iterator_new(@c session_id,
  *                    #PULSE_MEDIA_VIDEO, ...). Must refer to a video stream
- *                    of @session_id.
+ *                    of @c session_id.
  * @param out_id      [out] The resolved PulseVideoMixInputID.
  * @return PULSE_SUCCESS on success, or a PulseError code on failure
  *   (notably #PULSE_ERROR_NOT_CONFIGURED if the session/stream is unknown,
- *   or #PULSE_ERROR_INVALID_MEDIA_TYPE if @stream_id is an audio stream).
+ *   or #PULSE_ERROR_INVALID_MEDIA_TYPE if @c stream_id is an audio stream).
  */
 PULSE_EXPORT
 PulseError pulse_video_mix_input_from_rtsp_stream (Pulse * client, PulseRtspSessionID session_id,
@@ -195,7 +195,7 @@ PulseError pulse_video_mix_input_from_rtsp_stream (Pulse * client, PulseRtspSess
  * @brief Release: tear down what we created, free the entry
  *
  * @param client        The Pulse handle.
- * @param PulseVideoMixInputID The VideoMixInputID to release.
+ * @param id            The PulseVideoMixInputID to release.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code on failure.
  */
 PULSE_EXPORT

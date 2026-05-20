@@ -89,10 +89,10 @@ PulseError pulse_device_session_disconnect_desktop_video_input (Pulse * client);
  * Call pulse_device_session_release_video_handle() to release the handle after its not used.
  *
  * @param client The Pulse handle
- * @media_content: the media content associated to the surface
- * @width: the desired width for the surface
- * @height: the desired height for the surface
- * @color: the background color in ARGB32, example for black: 0xff000000
+ * @param media_content the media content associated to the surface
+ * @param width the desired width for the surface
+ * @param height the desired height for the surface
+ * @param color the background color in ARGB32, example for black: 0xff000000
  * @return a *new* video handle for that media_content.
  */
 PULSE_EXPORT
@@ -104,9 +104,9 @@ void * pulse_device_session_create_video_handle (Pulse * client, PulseMediaConte
  *
  *
  * @param client The Pulse handle
- * @handle: The video handle to resize
- * @width: the desired width for the surface
- * @height: the desired height for the surface
+ * @param handle The video handle to resize
+ * @param width the desired width for the surface
+ * @param height the desired height for the surface
  * @return a PulseError
  */
 PULSE_EXPORT
@@ -115,7 +115,7 @@ PulseError pulse_device_session_resize_video_handle (Pulse * client, void * hand
 /**
  * @brief Release a video handle
  * @param client The Pulse handle
- * @handle: The video handle to release
+ * @param handle The video handle to release
  * @return a PulseError indicating success or failure
  */
 PULSE_EXPORT

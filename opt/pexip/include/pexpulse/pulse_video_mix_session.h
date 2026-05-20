@@ -39,17 +39,18 @@ typedef enum
  *
  * This struct describes *where* and *how* an input appears in the
  * composition.  It does NOT describe the source — that is identified
- * solely by @input_id, which the caller obtained from a
+ * solely by @c input_id, which the caller obtained from a
  * pulse_video_mix_input_from_*() function.
  *
- *   @input_id       An input previously obtained via
- *                   pulse_video_mix_input_from_device() or similar.
- *   @layer          Layer index (0-based). Same layer = same grid.
- *   @width_ratio    Fraction of layer width  (0.0–1.0).
- *   @height_ratio   Fraction of layer height (0.0–1.0).
- *   @x_centrepoint  Horizontal anchor (0.0=left, 0.5=center, 1.0=right).
- *   @y_centrepoint  Vertical anchor   (0.0=top,  0.5=center, 1.0=bottom).
- *   @videoproc_mask Per-input video processing (segmentation, blur).
+ * Fields:
+ *   - input_id       An input previously obtained via
+ *                    pulse_video_mix_input_from_device() or similar.
+ *   - layer          Layer index (0-based). Same layer = same grid.
+ *   - width_ratio    Fraction of layer width  (0.0–1.0).
+ *   - height_ratio   Fraction of layer height (0.0–1.0).
+ *   - x_centrepoint  Horizontal anchor (0.0=left, 0.5=center, 1.0=right).
+ *   - y_centrepoint  Vertical anchor   (0.0=top,  0.5=center, 1.0=bottom).
+ *   - videoproc_mask Per-input video processing (segmentation, blur).
  */
 typedef struct
 {
@@ -70,8 +71,9 @@ typedef struct
  * @brief PulseVideoMixConfig
  * Configuration for a video mix session.
  *
- * @num_inputs Number of elements in the @inputs array.
- * @inputs     Array of PulseVideoMixInput entries.
+ * Fields:
+ *   - num_inputs Number of elements in the @c inputs array.
+ *   - inputs     Array of PulseVideoMixInput entries.
  */
 typedef struct
 {
@@ -88,9 +90,9 @@ PULSE_DECL_BEGIN
 /**
  * @brief Connect (start) a video mix session.
  *
- * Sets up a compositing pipeline described by @config and attaches it to
- * @media_content.  Any previously connected video source on the same
- * @media_content will result in PULSE_ERROR_UNEXPECTED_STATE, so disconnect must
+ * Sets up a compositing pipeline described by @c config and attaches it to
+ * @c media_content.  Any previously connected video source on the same
+ * @c media_content will result in PULSE_ERROR_UNEXPECTED_STATE, so disconnect must
  * be called first.
  *
  * @param client        The Pulse handle.

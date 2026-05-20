@@ -36,7 +36,7 @@ PULSE_DECL_BEGIN
  * Coordinate space:
  *   All x/y values passed to pulse_annotation_stroke_add_point() are
  *   in canvas pixel coordinates, where (0, 0) is the top-left of the
- *   canvas and (@width - 1, @height - 1) is the bottom-right. The
+ *   canvas and (width - 1, height - 1) is the bottom-right. The
  *   canvas dimensions are fixed at acquire time. Mapping pointer
  *   events from a display widget back into canvas pixels is the
  *   caller's responsibility.
@@ -96,10 +96,15 @@ PulseError pulse_annotation_set_thickness (Pulse * client, PulseAnnotationID id,
  * redo / clear continue to operate only on user strokes — wiping
  * the canvas does not also wipe the whiteboard.
  *
+ * @param client   The Pulse handle.
+ * @param id       The annotation surface to update.
  * @param enabled  TRUE to fill the canvas, FALSE to keep it transparent.
- * @param r,g,b,a  Background colour as RGBA components (0-255). Ignored
- *                 when @enabled is FALSE. An @a of 0 with @enabled TRUE
- *                 is permitted but renders the same as @enabled FALSE.
+ * @param r        Background red component (0-255).
+ * @param g        Background green component (0-255).
+ * @param b        Background blue component (0-255).
+ * @param a        Background alpha component (0-255). Ignored when @c enabled
+ *                 is FALSE. An @c a of 0 with @c enabled TRUE is permitted but
+ *                 renders the same as @c enabled FALSE.
  */
 PULSE_EXPORT
 PulseError pulse_annotation_set_background (Pulse * client, PulseAnnotationID id, bool enabled, uint8_t r, uint8_t g,
@@ -116,6 +121,8 @@ PulseError pulse_annotation_set_background (Pulse * client, PulseAnnotationID id
  * is used to add points to and to end the stroke. Each begin must be
  * matched by exactly one _stroke_end().
  *
+ * @param client              The Pulse handle.
+ * @param id                  The annotation surface to draw on.
  * @param[out] out_stroke_id  The resolved stroke identifier.
  */
 PULSE_EXPORT

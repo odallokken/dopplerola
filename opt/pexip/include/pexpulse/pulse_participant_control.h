@@ -139,8 +139,8 @@ PulseError pulse_participant_control_dtmf (Pulse * client, const char * target_p
  * @brief Change the participant name overlay text.
  * This function changes the overlay text of the participant identified by the target_participant_uuid.
  * @param client The Pulse handle
- * @param target_participant_uuid UUID of the target participant
  * @param target_participant_uuid UUID of the target participant. Set to NULL for targeting this client.
+ * @param overlay_text The new overlay text to display for the target participant.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  * @note If target_participant_uuid is NULL (targeting this client), this can be called regardless of session role.
  * @note If target is specified, this function can only be called when the session has role HOST.
@@ -154,8 +154,8 @@ PulseError pulse_participant_control_overlay_text (Pulse * client, const char * 
  * only). This function controls whether or not the participant identified by the target_participant_uuid, sees
  * presentation in the layout mix.
  * @param client The Pulse handle
- * @param target_participant_uuid UUID of the target participant
  * @param target_participant_uuid UUID of the target participant. Set to NULL for targeting this client.
+ * @param presentation_in_mix TRUE to show presentation in the layout mix, FALSE to hide it.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  * @note If target_participant_uuid is NULL (targeting this client), this can be called regardless of session role.
  * @note If target is specified, this function can only be called when the session has role HOST.
@@ -185,6 +185,7 @@ PulseError pulse_participant_control_role (Pulse * client, const char * target_p
  * @param action A PulseFeccActionType, one of [PULSE_FECC_ACTION_START, PULSE_FECC_ACTION_CONTINUE,
  * PULSE_FECC_ACTION_STOP]
  * @param movement A PulseFeccMovementDirection mask containing on or more camera controls.
+ * @param timeout_ms Timeout in milliseconds for the FECC command to be acknowledged.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  * @note This function can only be called when the session has role HOST.
  */

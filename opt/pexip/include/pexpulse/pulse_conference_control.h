@@ -528,7 +528,7 @@ pulse_conference_control_silent_video_detection (Pulse * client,
  * @note This function is only available to conference Hosts.
  */
 PULSE_EXPORT
-PulseError pulse_conference_control_set_guests_can_unmute (Pulse * client, bool guests_can_unumte);
+PulseError pulse_conference_control_set_guests_can_unmute (Pulse * client, bool guests_can_unmute);
 
 /**
  * @brief Retrieve a list of available layouts for the conference.
@@ -633,8 +633,8 @@ pulse_conference_control_get_classification_level (Pulse * client,
  * @brief Create a new breakout room.
  * This function creates a new breakout room, and optionally moves specified participants into that room.
  * @param client The Pulse handle
- * @param request request The new breakout room configuration.
- * @param request new_room_id Reference to a PulseRoomId which will be filled in with the .
+ * @param request The new breakout room configuration.
+ * @param response_room_id Reference to a PulseRoomId which will be filled in with the id of the new room.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  * @note This function is only available to conference Hosts.
  */
@@ -687,6 +687,7 @@ PulseError pulse_conference_control_breakouts_clearbuzz (Pulse * client);
  * @brief Transfer participants to another room.
  * This function moves all participants into the main room, but does not shut down the breakout rooms.
  * @param client The Pulse handle
+ * @param request The transfer request describing the source/target rooms and participants.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  * @note This function is only available to conference Hosts.
  */
@@ -708,7 +709,7 @@ PulseError pulse_conference_control_breakouts_leavebreakout (Pulse * client);
 /**
  * @brief Free PulseConferenceControlDialResponse
  * This function frees any memory associated with a PulseConferenceControlDialResponse object.
- * @ptr A pointer to a PulseConferenceControlDialResponse object.
+ * @param ptr A pointer to a PulseConferenceControlDialResponse object.
  */
 PULSE_EXPORT
 void pulse_conference_control_free_dial_participant_response (PulseConferenceControlDialResponse * ptr);
@@ -716,7 +717,7 @@ void pulse_conference_control_free_dial_participant_response (PulseConferenceCon
 /**
  * @brief Free PulseConferenceControlParticipantsResponse
  * This function frees any memory associated with a PulseConferenceControlParticipantsResponse object.
- * @ptr A pointer to a PulseConferenceControlParticipantsResponse object.
+ * @param ptr A pointer to a PulseConferenceControlParticipantsResponse object.
  */
 PULSE_EXPORT
 void pulse_conference_control_free_participant_list (PulseConferenceControlParticipantsResponse * ptr);
@@ -724,7 +725,7 @@ void pulse_conference_control_free_participant_list (PulseConferenceControlParti
 /**
  * @brief Free PulseConferenceAudioMixersList
  * This function frees any memory associated with a PulseConferenceAudioMixersList object.
- * @ptr A pointer to a PulseConferenceAudioMixersList object.
+ * @param list A pointer to a PulseConferenceAudioMixersList object.
  */
 PULSE_EXPORT
 void pulse_conference_control_free_audio_mixers_list (PulseConferenceAudioMixersList * list);
@@ -739,7 +740,7 @@ pulse_conference_control_free_classification_level_response (PulseConferenceCont
 /**
  * @brief Free PulseConferenceControlAvailableLayoutsResponse
  * This function frees any memory associated with a PulseConferenceControlAvailableLayoutsResponse object.
- * @ptr A pointer to a PulseConferenceControlAvailableLayoutsResponse object.
+ * @param ptr A pointer to a PulseConferenceControlAvailableLayoutsResponse object.
  */
 PULSE_EXPORT
 void pulse_conference_control_free_available_layouts_response (PulseConferenceControlAvailableLayoutsResponse * ptr);
@@ -747,7 +748,7 @@ void pulse_conference_control_free_available_layouts_response (PulseConferenceCo
 /**
  * @brief Free PulseConferenceControlLayoutSvgsResponse
  * This function frees any memory associated with a PulseConferenceControlLayoutSvgsResponse object.
- * @ptr A pointer to a PulseConferenceControlLayoutSvgsResponse object.
+ * @param ptr A pointer to a PulseConferenceControlLayoutSvgsResponse object.
  */
 PULSE_EXPORT
 void pulse_conference_control_free_layout_svgs_response (PulseConferenceControlLayoutSvgsResponse * ptr);
@@ -755,7 +756,7 @@ void pulse_conference_control_free_layout_svgs_response (PulseConferenceControlL
 /**
  * @brief Free PulseConferenceControlMessageTextResponse
  * This function frees any memory associated with a PulseConferenceControlMessageTextResponse object.
- * @ptr A pointer to a PulseConferenceControlMessageTextResponse object.
+ * @param ptr A pointer to a PulseConferenceControlMessageTextResponse object.
  */
 PULSE_EXPORT
 void pulse_conference_control_free_message_text_response (PulseConferenceControlMessageTextResponse * ptr);
@@ -763,7 +764,7 @@ void pulse_conference_control_free_message_text_response (PulseConferenceControl
 /**
  * @brief Free PulseConferenceControlPinningConfigResponse
  * This function frees any memory associated with a PulseConferenceControlPinningConfigResponse object.
- * @ptr A pointer to a PulseConferenceControlPinningConfigResponse object.
+ * @param ptr A pointer to a PulseConferenceControlPinningConfigResponse object.
  */
 PULSE_EXPORT
 void pulse_conference_control_free_pinning_config_response (PulseConferenceControlPinningConfigResponse * ptr);

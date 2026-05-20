@@ -663,7 +663,7 @@ PulseError pulse_options_set_background_image (Pulse * client, const char * imag
  * @brief Set a proxy server for HTTPS connections.
  * Tells Pulse to proxy all HTTPS calls via a proxy server.
  * @param client The Pulse handle
- * @param PulseProxyServerConfig The proxy server connection parameters.
+ * @param config The proxy server connection parameters.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  * @note Call pulse_options_set_proxy_server with a NULL handle to disable a previously set proxy configuration.
  */
@@ -684,6 +684,7 @@ PulseError pulse_options_set_http_max_version (Pulse * client, PulseHttpVersion)
  * @brief Append a client specific user agent string to our REST queries.
  * Tells Pulse append the provided string to its REST call user agent string.
  * @param client The Pulse handle
+ * @param user_agent_string The application-specific string appended to the user agent.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
@@ -744,7 +745,7 @@ PulseError pulse_options_set_video_scrambling (Pulse * client, bool enable);
  * @brief Set the sorting preferences for participant list updates.
  * This function sets the sorting preferences for participant list updates.
  * @param client The Pulse handle
- * @param enable The sorting config.
+ * @param config The sorting config.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
@@ -833,8 +834,15 @@ PulseError pulse_options_set_ice_candidate_active_ip_filtering (Pulse * client, 
  *
  * Opts the client into application-driven transport for RTP/RTCP, instead of the default
  * UDP-on-the-wire (port- or ICE-based) transport. Once configured:
- *   - Outbound (muxed RTP/RTCP) packets that the media layer wants to send are delivered to @p cb.
- *   - Inbound packets are fed back into the media layer via #pulse_app_transport_push.
+ *   - Outbound packets that the media layer wants to send are delivered to @p cb, each tagged
+ *     with a #PulseAppChannelId identifying the wire the packet was queued on.
+ *   - Inbound packets are fed back into the media layer via #pulse_app_transport_push, with the
+ *     same #PulseAppChannelId tagging which wire they were received on.
+ *
+ * In bundle mode (today's WebRTC/Infinity calls) the client emits exactly one channel id (the
+ * canonical zero-initialised bundle id, `{MAIN, AUDIO, MUX}` — content/type are opaque). In SIP
+ * non-bundle mode (with or without `a=rtcp-mux`) the client emits up to two channel ids per
+ * `m=` section. See #PulseAppChannelId for the per-mode semantics.
  *
  * Passing @p cb == NULL clears the binding (explicit unbind). When the binding is replaced or
  * cleared, the previously-registered @p destroy_cb is invoked (synchronously, after any in-flight

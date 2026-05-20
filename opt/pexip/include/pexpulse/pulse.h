@@ -143,7 +143,7 @@ PulseError pulse_setup_stage_1_from_response_buffer (Pulse * client, const char 
 /**
  * @brief Pulse setup where caller controls REST server communication - buffer based - Second stage out of two.
  * Pulse setup where user controls the communication with the REST server. Once the REST communication query to the
- * 'participants/<name>/calls' endpoint has succeeded, the full returned payload from the REST server should be provided
+ * `participants/<name>/calls` endpoint has succeeded, the full returned payload from the REST server should be provided
  * as input to this function. This will complete the session setup.
  * @param client The Pulse handle
  * @param buf The full, response buffer from the REST server, after a complete session setup.
@@ -170,7 +170,7 @@ PulseError pulse_setup_stage_1_from_structure (Pulse * client, PulseSetupStage1C
 /**
  * @brief Pulse setup where caller controls REST server communication - structured - Second stage out of two.
  * Pulse setup where user controls the communication with the REST server. Once the REST communication query to the
- * 'participants/<name>/calls' endpoint has succeeded, the full returned payload from the REST server should be provided
+ * `participants/<name>/calls` endpoint has succeeded, the full returned payload from the REST server should be provided
  * as input to this function. This will complete the session setup.
  * @param client The Pulse handle
  * @param config A pointer to a PulseSetupStage2Config, with the all needed values filled in.
@@ -326,7 +326,7 @@ void pulse_session_free_conference_info (PulseSessionInfo * info);
  * @brief Is the conference allowing full hd video?
  * This function returns true if the conference allows full hd video, and false if disallowed.
  * @param client The Pulse handle
- * @param version A pointer to a bool type. Upon successful return, the result will be written here.
+ * @param state A pointer to a bool type. Upon successful return, the result will be written here.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
@@ -336,7 +336,7 @@ PulseError pulse_session_get_allow_1080p (Pulse * client, bool * state);
  * @brief Is the conference allowing the VP9 codec?
  * This function returns true if the conference allows vp9, and false if disallowed.
  * @param client The Pulse handle
- * @param version A pointer to a bool type. Upon successful return, the result will be written here.
+ * @param state A pointer to a bool type. Upon successful return, the result will be written here.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
@@ -346,7 +346,7 @@ PulseError pulse_session_get_vp9_enabled (Pulse * client, bool * state);
  * @brief Is the conference chat enabled?
  * This function returns true if the conference is chat enabled, and false if chat is disabled.
  * @param client The Pulse handle
- * @param version A pointer to a bool type. Upon successful return, the result will be written here.
+ * @param state A pointer to a bool type. Upon successful return, the result will be written here.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
@@ -356,7 +356,7 @@ PulseError pulse_session_get_chat_enabled (Pulse * client, bool * state);
  * @brief Is your client announced as being FECC enabled?
  * This function returns true if FECC is enabled, and false otherwise.
  * @param client The Pulse handle
- * @param version A pointer to a bool type. Upon successful return, the result will be written here.
+ * @param state A pointer to a bool type. Upon successful return, the result will be written here.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
@@ -366,7 +366,7 @@ PulseError pulse_session_get_fecc_enabled (Pulse * client, bool * state);
  * @brief Does the conference allow guests to present?
  * This function returns true if guests are allowed to presend, and false otherwise.
  * @param client The Pulse handle
- * @param version A pointer to a bool type. Upon successful return, the result will be written here.
+ * @param state A pointer to a bool type. Upon successful return, the result will be written here.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
@@ -376,7 +376,7 @@ PulseError pulse_session_get_guests_can_present (Pulse * client, bool * state);
  * @brief Is RTMP enabled for the conference?
  * This function returns true if RTMP is enabled, and false otherwise.
  * @param client The Pulse handle
- * @param version A pointer to a bool type. Upon successful return, the result will be written here.
+ * @param state A pointer to a bool type. Upon successful return, the result will be written here.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
@@ -397,7 +397,7 @@ PulseError pulse_session_get_role (Pulse * client, PulseConferenceRole * role);
  * @brief Get the host service type.
  * This function the host service type,
  * @param client The Pulse handle
- * @param role A pointer to a PulseConferenceServiceType type. Upon successful return, the result will be written here.
+ * @param type A pointer to a PulseConferenceServiceType type. Upon successful return, the result will be written here.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
@@ -444,11 +444,11 @@ PULSE_EXPORT
 PulseError pulse_send_message (Pulse * client, const char * target_participant_uuid, PulseMessageRequest * request);
 
 /**
- * @brief Feed an inbound (muxed RTP/RTCP) packet into the client.
+ * @brief Feed an inbound packet into the client.
  *
  * Companion to pulse_options_set_app_transport(). The application calls this function with each
- * packet it has received from its own transport (e.g. a WebSocket tunnel), to deliver it into the
- * client's receive pipeline.
+ * packet it has received from its own transport (e.g. a WebSocket tunnel or a UDP socket), to
+ * deliver it into the client's receive pipeline.
  *
  * Thread-safe: may be called from any thread, including synchronously from inside the
  * #PulseAppPacketCallback that the client uses for outbound packets (i.e. loopback usage is safe).
@@ -456,13 +456,21 @@ PulseError pulse_send_message (Pulse * client, const char * target_participant_u
  * The @p data buffer is borrowed for the duration of the call; the implementation copies the bytes
  * it needs to retain.
  *
- * @param client The Pulse handle.
- * @param data Pointer to a muxed RTP/RTCP packet.
- * @param size Length of @p data in bytes.
+ * Channel id semantics: @p channel_id identifies the wire this inbound packet was received on
+ * and must match the channel id that was emitted (or that *would* be emitted) by the corresponding
+ * outbound #PulseAppPacketCallback. In bundle mode, a zero-initialised #PulseAppChannelId is
+ * the canonical bundle channel id (`{content=MAIN, type=AUDIO, kind=MUX}` — content and type are
+ * opaque; only kind matters and must be #PULSE_APP_CHANNEL_KIND_MUX).
+ *
+ * @param client     The Pulse handle.
+ * @param channel_id Identifies the wire this packet was received on.
+ * @param data       Pointer to the packet (RTP or RTCP, depending on @p channel_id.kind in split
+ *                   mode; an RTP/RTCP-muxed packet in bundle mode).
+ * @param size       Length of @p data in bytes.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
-PulseError pulse_app_transport_push (Pulse * client, const uint8_t * data, size_t size);
+PulseError pulse_app_transport_push (Pulse * client, PulseAppChannelId channel_id, const uint8_t * data, size_t size);
 
 PULSE_DECL_END
 

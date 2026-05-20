@@ -122,7 +122,7 @@ PULSE_DECL_BEGIN
 
 /**
  * @brief pulse_rtsp_session_connect_input
- * Connects a new RTSP input session by dialing out to @config->location.
+ * Connects a new RTSP input session by dialing out to @c config->location.
  * Returns once the camera SDP has been negotiated and inputs have been
  * enumerated via the input-added callback (or with an error if the
  * dial-out failed).
@@ -147,7 +147,7 @@ PulseError pulse_rtsp_session_connect_input (Pulse * client, PulseRtspInputConfi
 /**
  * @brief pulse_rtsp_session_disconnect_input
  * Disconnects and frees the RTSP input session identified by
- * @session_id. Any inputs the session published into Pulse's media
+ * @c session_id. Any inputs the session published into Pulse's media
  * routing (via pulse_rtsp_session_bind_to_content()) are unregistered;
  * any video-mix-input handles that referenced the session become stale
  * and their lookups will resolve to "no input".
@@ -163,7 +163,7 @@ PulseError pulse_rtsp_session_disconnect_input (Pulse * client, PulseRtspSession
 /**
  * @brief pulse_rtsp_session_bind_to_content
  * Publishes the session's audio and video inputs into Pulse's
- * media-content slot routing for @media_content (e.g.
+ * media-content slot routing for @c media_content (e.g.
  * #PULSE_MEDIA_CONTENT_MAIN or #PULSE_MEDIA_CONTENT_PRESENTATION).
  * After this call, the session participates in PMX's MAIN/PRESENTATION
  * wiring exactly as a camera or RTMP source bound to the same slot
@@ -198,7 +198,7 @@ PulseError pulse_rtsp_session_bind_to_content (Pulse * client, PulseRtspSessionI
  * The ids are stable for the lifetime of the session — disconnecting
  * invalidates them.
  *
- * The values returned here are opaque #uint32_t handles in the Pulse
+ * The values returned here are opaque @c uint32_t handles in the Pulse
  * domain; they happen to be the underlying PMX input ids but callers
  * must not depend on that — treat them as session-scoped opaque
  * identifiers, useful only for diagnostic comparison (e.g. asserting
@@ -273,7 +273,7 @@ PULSE_EXPORT
  * @brief Create a new stream iterator scoped to one media type.
  *
  * Snapshots the streams of the specified media type currently published
- * by @session_id. Because pulse_rtsp_session_connect_input() blocks
+ * by @c session_id. Because pulse_rtsp_session_connect_input() blocks
  * until the camera's SDP has been fully negotiated and every stream
  * exposed, the iterator returned here is guaranteed to contain every
  * stream the server announced (or to be empty for a media type the
@@ -287,7 +287,7 @@ PULSE_EXPORT
  * @param[out] out_iterator On success, the new iterator handle. Must
  *   be non-NULL. Released with pulse_rtsp_stream_iterator_free().
  * @return PULSE_SUCCESS on success, or a PulseError code on failure
- *   (notably #PULSE_ERROR_NOT_CONFIGURED if @session_id is unknown).
+ *   (notably #PULSE_ERROR_NOT_CONFIGURED if @c session_id is unknown).
  */
 PulseError pulse_rtsp_session_stream_iterator_new (Pulse * client, PulseRtspSessionID session_id,
                                                    PulseMediaType media_type, PulseRtspStreamIterator ** out_iterator);
@@ -322,7 +322,7 @@ const PulseRtspStream * pulse_rtsp_stream_iterator_next (PulseRtspStreamIterator
 
 PULSE_EXPORT
 /**
- * @brief Invoke @func once per stream in the iterator, in order.
+ * @brief Invoke @c func once per stream in the iterator, in order.
  */
 PulseError pulse_rtsp_stream_iterator_foreach (PulseRtspStreamIterator * iterator, PulseRtspStreamIteratorFunc func,
                                                void * user_context);

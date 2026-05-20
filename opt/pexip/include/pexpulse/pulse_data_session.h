@@ -104,7 +104,7 @@ PulseError pulse_data_session_config_audio_from_caps (PulseDataSessionConfig * c
  * Sets the configuration values for the audio session.
  * @param config pointer to a PulseDataSessionConfig instance.
  * @param audio_format The audioformat to configure the data-session as.
- * @param layout The layout of the samples.
+ * @param audio_layout The layout of the samples.
  * @param rate The configured audio data rate (bps).
  * @param channels The number of channels the audio channels the audio input consists of.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
@@ -293,8 +293,8 @@ PulseError pulse_data_session_config_get_audio_caps (PulseDataSessionConfig * co
  * @param audio_layout a pointer to where the configured audio layout will be stored.
  * @param rate a pointer to where the configured rate will be stored.
  * @param channels a pointer to where the configured channels will be stored.
- * @param caps a pointer to a const char * where the configured additional caps string will be referenced. The returned
- * string is owned by the config, and must not be freed directly.
+ * @param additional_caps a pointer to a const char * where the configured additional caps string will be referenced.
+ * The returned string is owned by the config, and must not be freed directly.
  */
 PULSE_EXPORT
 PulseError pulse_data_session_config_get_audio_values (PulseDataSessionConfig * config,
@@ -319,8 +319,8 @@ PulseError pulse_data_session_config_get_video_caps (PulseDataSessionConfig * co
  * @param pixel_format a pointer to where the configured pixel_format will be stored.
  * @param dimensions a pointer to where the configured dimensions will be stored.
  * @param framerate a pointer to where the configured framerate will be stored.
- * @param caps a pointer to a const char * where the configured additional caps string will be referenced. The returned
- * string is owned by the config, and must not be freed directly.
+ * @param additional_caps a pointer to a const char * where the configured additional caps string will be referenced.
+ * The returned string is owned by the config, and must not be freed directly.
  */
 PULSE_EXPORT
 PulseError pulse_data_session_config_get_video_values (PulseDataSessionConfig * config,

@@ -156,14 +156,54 @@ typedef bool (*PulseIsAborted) (void * ctx);
 /**
  * @brief PulseAsyncOperationResultCallback
  * Retrieved as a callback for one on the async functions. Returns the result of the operation.
- * @param PulseError The final error code for the processing of the async function.
+ * @param err The final error code for the processing of the async function.
  * @param user_context The user context configured with this callback.
  */
 typedef void (*PulseAsyncOperationResultCallback) (const PulseError err, void * user_context);
 
 /**
+ * @brief PulseAppChannelKind
+ * Identifies which wire a packet flowed on (or should flow on) when the
+ * application owns the transport. Today bundle mode always uses
+ * #PULSE_APP_CHANNEL_KIND_MUX (a single wire carrying both RTP and
+ * RTCP). SIP non-bundle (with `a=rtcp-mux` off) splits each `m=`
+ * section's transport into two wires: one #PULSE_APP_CHANNEL_KIND_RTP
+ * and one #PULSE_APP_CHANNEL_KIND_RTCP.
+ */
+typedef enum
+{
+  PULSE_APP_CHANNEL_KIND_MUX = 0, /**< RTP+RTCP muxed on a single wire (the default). */
+  PULSE_APP_CHANNEL_KIND_RTP,     /**< RTP-only wire (rtcp-mux disabled on this `m=` section). */
+  PULSE_APP_CHANNEL_KIND_RTCP,    /**< RTCP-only wire (rtcp-mux disabled on this `m=` section). */
+} PulseAppChannelKind;
+
+/**
+ * @brief PulseAppChannelId
+ * Identifies an application-driven transport wire end-to-end. Forwarded
+ * with every outbound #PulseAppPacketCallback invocation and consumed
+ * by every #pulse_app_transport_push call.
+ *
+ * **Bundle mode** (today's WebRTC/Infinity calls): exactly one wire
+ * exists per call. The @ref content and @ref type fields are not
+ * meaningful — applications should read only @ref kind (which is
+ * always #PULSE_APP_CHANNEL_KIND_MUX). A zero-initialised
+ * #PulseAppChannelId is the canonical bundle channel id.
+ *
+ * **SIP non-bundle mode**: each `m=` section gets one (mux) or two
+ * (split RTP+RTCP) channels. @ref content + @ref type identify which
+ * `m=` section, and @ref kind distinguishes the RTP wire from the
+ * RTCP wire when rtcp-mux is off.
+ */
+typedef struct
+{
+  PulseMediaContent content; /**< Which `m=` section this wire belongs to (non-bundle only). */
+  PulseMediaType type;       /**< Which `m=` section this wire belongs to (non-bundle only). */
+  PulseAppChannelKind kind;  /**< MUX vs split RTP/RTCP wire. */
+} PulseAppChannelId;
+
+/**
  * @brief PulseAppPacketCallback
- * Callback invoked once per outbound (muxed RTP/RTCP) packet that the client wants to deliver via
+ * Callback invoked once per outbound packet that the client wants to deliver via
  * application-driven transport. Configured via pulse_options_set_app_transport().
  *
  * Threading: the callback may be invoked on any internal media/streaming thread. The callback
@@ -178,11 +218,20 @@ typedef void (*PulseAsyncOperationResultCallback) (const PulseError err, void * 
  * Backpressure: the callback returns void; outbound packets that cannot be sent are best-effort
  * dropped by the application. This matches the underlying media layer semantics.
  *
+ * Channel id semantics: @p channel_id identifies the wire the packet flowed on. In bundle mode
+ * the application should ignore @p channel_id.content and @p channel_id.type and look only at
+ * @p channel_id.kind (always #PULSE_APP_CHANNEL_KIND_MUX). In SIP non-bundle mode all three
+ * fields together identify the per-`m=` per-kind wire — see #PulseAppChannelId.
+ *
  * @param user_context The user context registered with the callback.
- * @param data Borrowed pointer to a muxed RTP/RTCP packet (valid only for the duration of the call).
+ * @param channel_id   Identifies the wire this packet flowed on.
+ * @param data Borrowed pointer to a packet (valid only for the duration of the call). In bundle
+ *             mode this is a muxed RTP/RTCP packet; in split mode the @p channel_id.kind tells
+ *             you whether this is an RTP or RTCP packet.
  * @param size Length of @p data in bytes.
  */
-typedef void (*PulseAppPacketCallback) (void * user_context, const uint8_t * data, int size);
+typedef void (*PulseAppPacketCallback) (void * user_context, PulseAppChannelId channel_id, const uint8_t * data,
+                                        int size);
 
 /**
  * @brief PulseDestroyCallback
@@ -483,7 +532,7 @@ typedef void (*PulseConferenceEventPresentationStartCallback) (PulseRoomId room_
 /**
  * @brief PulseConferenceEventPresentationStartCallback
  * Callback function to inform about presentation stopping.
- * @param event A PulseConferenceEventPresentationStart structure containing info about who is presentating.
+ * @param room_id The room the presentation belongs to.
  * @param user_context The user context configured with this callback.
  */
 typedef void (*PulseConferenceEventPresentationStopCallback) (PulseRoomId room_id, void * user_context);
@@ -491,6 +540,7 @@ typedef void (*PulseConferenceEventPresentationStopCallback) (PulseRoomId room_i
 /**
  * @brief PulseConferenceEventLayoutCallback
  * Callback function to inform about layout changes.
+ * @param room_id The room the layout change belongs to.
  * @param event A PulseConferenceEventLayout structure containing the updated layout info.
  * @param user_context The user context configured with this callback.
  */
@@ -500,6 +550,7 @@ typedef void (*PulseConferenceEventLayoutCallback) (PulseRoomId room_id, const P
 /**
  * @brief PulseConferenceEventStageCallback
  * Callback function to inform about stage changes.
+ * @param room_id The room the stage change belongs to.
  * @param event A PulseConferenceEventStage structure containing the updated stage info.
  * @param user_context The user context configured with this callback.
  */
@@ -509,7 +560,8 @@ typedef void (*PulseConferenceEventStageCallback) (PulseRoomId room_id, const Pu
 /**
  * @brief PulseConferenceEventLiveCaptionsCallback
  * Callback function to inform about live captions event.
- * @param list A PulseConferenceEventLiveCaptions structure containing the live captions event.
+ * @param room_id The room the live captions belong to.
+ * @param event A PulseConferenceEventLiveCaptions structure containing the live captions event.
  * @param user_context The user context configured with this callback.
  */
 typedef void (*PulseConferenceEventLiveCaptionsCallback) (PulseRoomId room_id,
@@ -519,6 +571,7 @@ typedef void (*PulseConferenceEventLiveCaptionsCallback) (PulseRoomId room_id,
 /**
  * @brief PulseConferenceAudioMixerListCallback
  * Callback function to inform about updated audio mixers list.
+ * @param room_id The room the mixer list belongs to.
  * @param list A PulseConferenceAudioMixersList structure containing the updated list of audio mixers.
  * @param user_context The user context configured with this callback.
  * @note The returned list must be freed by calling pulse_conference_control_free_audio_mixers_list.
@@ -578,7 +631,8 @@ typedef void (*PulseBreakoutRoomPreTransferCallback) (PulseRoomId room_id, const
 /**
  * @brief PulseBreakoutRoomPostTransferCallback
  * Callback function to inform that the client was transferred to a different breakout room.
- * @param breakout_room_uuid The UUID of the room the client was transferred to. For the main room, this is NULL.
+ * @param room_id The id of the room the client was transferred to. For the main room, this is NULL.
+ * @param user_context The user context configured with this callback.
  * @note This callback is emitted for both HOST and GUEST participants.
  */
 typedef void (*PulseBreakoutRoomPostTransferCallback) (PulseRoomId room_id, void * user_context);
@@ -586,7 +640,8 @@ typedef void (*PulseBreakoutRoomPostTransferCallback) (PulseRoomId room_id, void
 /**
  * @brief PulseBreakoutRoomTransferCancelledCallback
  * Callback function to inform that the last PulseBreakoutRoomPreTransferCallback was cancelled.
- * @param breakout_room_uuid The UUID of the room the client was transferred to. For the main room, this is NULL.
+ * @param room_id The id of the room the client would have been transferred to. For the main room, this is NULL.
+ * @param user_context The user context configured with this callback.
  * @note This callback is emitted for both HOST and GUEST participants.
  */
 typedef void (*PulseBreakoutRoomTransferCancelledCallback) (PulseRoomId room_id, void * user_context);
@@ -594,7 +649,8 @@ typedef void (*PulseBreakoutRoomTransferCancelledCallback) (PulseRoomId room_id,
 /**
  * @brief PulseBreakoutRoomCreatedCallback
  * Callback function to inform that a new breakout room was created.
- * @param breakout_room_uuid The UUID of the room the client was transferred to. For the main room, this is NULL.
+ * @param room_id The id of the newly created breakout room.
+ * @param user_context The user context configured with this callback.
  * @note This callback is only emitted for HOST participants.
  * @note This callback can be called multiple times for the same uuid, if eg. a network change or error occured. In this
  * case, the state of the room (conference_stataus and participant lists) will be recreated completely.
@@ -604,7 +660,8 @@ typedef void (*PulseBreakoutRoomCreatedCallback) (PulseRoomId room_id, void * us
 /**
  * @brief PulseBreakoutRoomDestroyedCallback
  * Callback function to inform that a existing breakout room was destroyed.
- * @param breakout_room_uuid The UUID of the room the client was transferred to. For the main room, this is NULL.
+ * @param room_id The id of the breakout room that was destroyed.
+ * @param user_context The user context configured with this callback.
  * @note This callback is only emitted for HOST participants.
  */
 typedef void (*PulseBreakoutRoomDestroyedCallback) (PulseRoomId room_id, void * user_context);
