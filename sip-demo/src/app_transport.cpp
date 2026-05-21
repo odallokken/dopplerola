@@ -353,37 +353,60 @@ static std::string pick_local_ip()
     return "127.0.0.1";
 }
 
-// Bind a fresh UDP socket on 0.0.0.0 with a kernel-picked port, set it
-// non-blocking. Returns (fd, port) on success or (-1, 0) on failure.
-static bool bind_udp_socket(int & fd_out, unsigned & port_out)
+// Bind a fresh UDP socket on 0.0.0.0, set it non-blocking. Tries to bind
+// the port pointed to by `next_port` first; on EADDRINUSE walks up by
+// one until a free port is found (or we run out of port space / hit too
+// many attempts). On success, `next_port` is advanced to bound_port + 1
+// so successive calls produce contiguous numbers — this is what gives
+// us the "audio rtp=N, audio rtcp=N+1, video rtp=N+2, ..." layout the
+// SDP rewriter then advertises. Returns (fd, port) on success or
+// (-1, 0) on failure (in which case `next_port` is left untouched).
+static bool bind_udp_socket(int & fd_out, unsigned & port_out,
+                            unsigned & next_port)
 {
-    int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) return false;
+    constexpr unsigned kMaxAttempts = 1024;
 
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-        ::close(fd);
-        return false;
-    }
+    for (unsigned attempt = 0; attempt < kMaxAttempts; ++attempt) {
+        unsigned try_port = next_port + attempt;
+        if (try_port > 65535) break;     // ran off the top of the port space
 
-    sockaddr_in addr{};
-    addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port        = 0;
-    if (::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
-        ::close(fd);
-        return false;
-    }
+        int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd < 0) return false;
 
-    sockaddr_in bound{};
-    socklen_t blen = sizeof(bound);
-    if (::getsockname(fd, reinterpret_cast<sockaddr *>(&bound), &blen) < 0) {
-        ::close(fd);
-        return false;
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+            ::close(fd);
+            return false;
+        }
+
+        sockaddr_in addr{};
+        addr.sin_family      = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        addr.sin_port        = htons(static_cast<uint16_t>(try_port));
+        if (::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
+            int saved = errno;
+            ::close(fd);
+            if (saved == EADDRINUSE || saved == EACCES) {
+                // Try the next candidate. EACCES covers low-numbered
+                // ports we don't own, which shouldn't happen with our
+                // 10000+ base but is cheap to handle.
+                continue;
+            }
+            return false;
+        }
+
+        sockaddr_in bound{};
+        socklen_t blen = sizeof(bound);
+        if (::getsockname(fd, reinterpret_cast<sockaddr *>(&bound), &blen) < 0) {
+            ::close(fd);
+            return false;
+        }
+        fd_out    = fd;
+        port_out  = ntohs(bound.sin_port);
+        next_port = port_out + 1;
+        return true;
     }
-    fd_out   = fd;
-    port_out = ntohs(bound.sin_port);
-    return true;
+    return false;
 }
 
 } // namespace
@@ -607,6 +630,13 @@ std::string AppTransport::configure_local_offer(const std::string & pulse_offer_
     }
 
     int audio_seen = 0, video_seen = 0;
+    // Sequential port allocator. Successive bind_udp_socket() calls
+    // walk this up by one, so on a fresh demo run with the default
+    // m-section order (audio then video) we get audio RTP=10000,
+    // audio RTCP=10001, video RTP=10002, video RTCP=10003, ... If a
+    // candidate port is already in use we skip past it - in practice
+    // that just shifts the contiguous block up.
+    unsigned next_port = 10000;
     for (auto & s : sections) {
         PulseMediaContent content; PulseMediaType type;
         if (!section_to_content_type(s.media, audio_seen, video_seen, content, type)) {
@@ -619,7 +649,7 @@ std::string AppTransport::configure_local_offer(const std::string & pulse_offer_
 
         if (s.mux) {
             int fd; unsigned port;
-            if (!bind_udp_socket(fd, port)) {
+            if (!bind_udp_socket(fd, port, next_port)) {
                 out_error = "bind() failed for " + s.media + " mux socket";
                 return pulse_offer_sdp;
             }
@@ -638,11 +668,11 @@ std::string AppTransport::configure_local_offer(const std::string & pulse_offer_
             }
         } else {
             int rtp_fd, rtcp_fd; unsigned rtp_port, rtcp_port;
-            if (!bind_udp_socket(rtp_fd, rtp_port)) {
+            if (!bind_udp_socket(rtp_fd, rtp_port, next_port)) {
                 out_error = "bind() failed for " + s.media + " RTP socket";
                 return pulse_offer_sdp;
             }
-            if (!bind_udp_socket(rtcp_fd, rtcp_port)) {
+            if (!bind_udp_socket(rtcp_fd, rtcp_port, next_port)) {
                 ::close(rtp_fd);
                 out_error = "bind() failed for " + s.media + " RTCP socket";
                 return pulse_offer_sdp;
