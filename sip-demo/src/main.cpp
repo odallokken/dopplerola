@@ -40,6 +40,11 @@
 #include "app_transport.h"
 #include "sip_ua.h"
 
+// Forward declarations - the texture helpers are defined further down,
+// but lazy_pulse_init() (just above start_call) needs to reach them.
+struct GLTextureContext;
+static void attach_video_data_session(Pulse * pulse, GLTextureContext * ctx);
+
 // ----------------------------------------------------------------------------
 //  Application state
 // ----------------------------------------------------------------------------
@@ -56,7 +61,7 @@ enum class CallStage {
 };
 
 // ---------------------------------------------------------------------------
-// STAGED BRING-UP: AppTransport bridge (startup-time decision)
+// STAGED BRING-UP: AppTransport bridge (decided at first Call)
 // ---------------------------------------------------------------------------
 // The architecture is: Pulse hands its RTP/RTCP packets to the
 // `AppTransport` via the pulse_options_set_app_transport() callback API,
@@ -73,42 +78,49 @@ enum class CallStage {
 // device_session_connect_* calls do NOT advance the status, so they're
 // fine to run between the bind and stage 1.
 //
-// In practice we bind once at startup (right after pulse_new_external_rest)
-// driven by DOPPLER_SIP_BRIDGE (default = on). The UI checkbox below
-// lets the operator flip the bridge on/off up until the first call's
-// stage 1 - after that the checkbox is permanently disabled for the
-// rest of the process, because Pulse will reject any further (un)bind.
+// We do NOTHING to Pulse before the operator presses "Call": no
+// pulse_new_external_rest(), no bind, no callback registration, no
+// device or data-session connects. The checkbox below is a pure intent
+// flag while in that "idle" state, so toggling it has zero effect on
+// Pulse. On the first Call press, `lazy_pulse_init()` walks the whole
+// startup sequence in one shot - including the AppTransport bind, iff
+// the checkbox was still ticked at that moment - and then issues stage
+// 1. After that, Pulse's session status has advanced and Pulse rejects
+// any further (un)bind, so the checkbox locks for the rest of the
+// process. `DOPPLER_SIP_BRIDGE` only seeds the initial checkbox state.
 
 struct AppState
 {
     Pulse *                  pulse     = nullptr;
     doppler::SipUA *         sip       = nullptr;
-    // Non-owning pointer to the AppTransport instance. Populated by main()
-    // immediately after `bind_to_pulse()` succeeds at startup, or left as
-    // nullptr if DOPPLER_SIP_BRIDGE=0 or the bind itself failed. Every
-    // `if (app.transport)` site below short-circuits in that case,
-    // routing the call through Pulse-owned sockets unmodified.
+    // Non-owning pointer to the AppTransport instance. Populated by
+    // lazy_pulse_init() on the first Call press iff `bridge_enabled`
+    // was true at that moment AND `bind_to_pulse()` succeeded. Stays
+    // nullptr otherwise. Every `if (app.transport)` site below short-
+    // circuits in that case, routing media through Pulse-owned sockets.
     doppler::AppTransport *  transport = nullptr;
 
-    // Bridge state. `bridge_enabled` starts from the DOPPLER_SIP_BRIDGE env
-    // var (default = true) and can be toggled at runtime via the UI
-    // checkbox UNTIL the first stage 1 runs (see `bridge_lockable` below).
-    // `bridge_bound` tracks whether pulse_options_set_app_transport()
-    // currently has our callback registered with Pulse. Atomics keep the
-    // UI-thread writes tidy against the UI-thread reads in the render loop.
+    // Bridge state. `bridge_enabled` is the operator's intent, seeded
+    // from DOPPLER_SIP_BRIDGE at startup (default = true) and freely
+    // togglable via the UI checkbox until the first Call has been
+    // placed - i.e. until `app.pulse` becomes non-null. After that the
+    // checkbox locks, because Pulse will reject any further (un)bind.
+    // `bridge_bound` mirrors whether pulse_options_set_app_transport()
+    // currently has our callback registered with Pulse; only flips to
+    // true inside lazy_pulse_init(). Atomics keep the UI-thread writes
+    // tidy against the UI-thread reads in the render loop.
     std::atomic<bool>        bridge_enabled{false};
     std::atomic<bool>        bridge_bound{false};
-    // One-shot latch. Pulse's pulse_options_set_app_transport() is only
-    // accepted while the session status is UNINITIALIZED, i.e. before
-    // pulse_setup_stage_1_from_structure() / _from_response_buffer().
-    // We flip this to false just before the first stage 1 call; the
-    // checkbox grays out from that point on for the lifetime of the
-    // process, because Pulse will reject any further (un)bind.
-    std::atomic<bool>        bridge_lockable{true};
     // Storage for the AppTransport instance lives in main(); we keep a
     // non-owning pointer here so call-handling code can reach it (e.g.
     // configure_local_offer / configure_remote_answer).
     doppler::AppTransport *  transport_storage = nullptr;
+
+    // Non-owning pointers to the GL texture contexts main() owns. We
+    // need them inside lazy_pulse_init() to wire up Pulse data-session
+    // outputs once - and only once - the operator presses Call.
+    GLTextureContext *       remote_ctx_storage   = nullptr;
+    GLTextureContext *       selfview_ctx_storage = nullptr;
 
     // The single input the demo needs: a SIP URI to call.
     char sip_uri[256]      = "";          // e.g. "havard@pexipdemo.com"
@@ -291,7 +303,7 @@ static void on_sip_failure(AppState & app, const std::string & reason)
     // We're on PJSIP's worker thread here, so use the async variant - a
     // synchronous pulse_disconnect() would block the SIP event loop until
     // Pulse's teardown is done.
-    if (pulse_is_connected(app.pulse)) {
+    if (app.pulse && pulse_is_connected(app.pulse)) {
         PulseAsyncOperationResultCallbackConfig result_cb{ on_async_result, &app };
         pulse_disconnect_async(app.pulse, &result_cb, nullptr);
     }
@@ -303,11 +315,89 @@ static void on_sip_ended(AppState & app, const std::string & reason)
     set_status(app, std::string("SIP call ended: ") + reason);
     set_progress(app, "");
     // Walk Pulse back to the idle state so the user can place another call.
-    if (pulse_is_connected(app.pulse)) {
+    if (app.pulse && pulse_is_connected(app.pulse)) {
         PulseAsyncOperationResultCallbackConfig result_cb{ on_async_result, &app };
         pulse_disconnect_async(app.pulse, &result_cb, nullptr);
     }
     app.stage.store(static_cast<int>(CallStage::Idle));
+}
+
+// One-shot Pulse bring-up. Called from start_call() the first time the
+// operator presses Call (idempotent: re-entry is a no-op once `app.pulse`
+// is set). Bundles together every Pulse-touching action we used to do
+// eagerly at startup: handle creation, AppTransport bind (iff the
+// checkbox is still ticked), callback registration, native-window
+// suppression, default device attachment, video data-session attach.
+//
+// Doing it here, just before stage 1, means the operator's checkbox
+// state is the one Pulse actually sees - there is no longer any window
+// in which Pulse can wire up sessions against an app-transport callback
+// the operator hadn't yet had a chance to refuse. After stage 1 runs
+// (just below this in start_call), Pulse's session status advances out
+// of UNINITIALIZED and any further (un)bind would be rejected; that's
+// what locks the checkbox for the remainder of the process.
+//
+// Returns true on success; false if pulse_new_external_rest() failed,
+// in which case the caller must abort the call attempt.
+static bool lazy_pulse_init(AppState & app)
+{
+    if (app.pulse) return true;     // already initialised on a prior Call
+
+    // External-rest mode: PJSIP owns SIP signalling, Pulse is purely a
+    // media engine. The update_sdp callback fires if Pulse later wants
+    // to renegotiate (e.g. add a content stream); we register it against
+    // `&app` so it can post into the UI status line.
+    PulseExternalRestCallbackConfig ext_rest_cfg{};
+    ext_rest_cfg.update_sdp_callback     = on_pulse_update_sdp;
+    ext_rest_cfg.update_sdp_user_context = &app;
+    app.pulse = pulse_new_external_rest(ext_rest_cfg);
+    if (!app.pulse) {
+        set_status(app, "pulse_new_external_rest() returned NULL");
+        return false;
+    }
+
+    // AppTransport bind. The checkbox value here is whatever the
+    // operator last left it at - if they unchecked it before pressing
+    // Call, we skip the bind entirely and Pulse never even sees our
+    // callback.
+    if (app.bridge_enabled.load() && app.transport_storage) {
+        PulseError xport_err = app.transport_storage->bind_to_pulse(app.pulse);
+        if (xport_err != PULSE_SUCCESS) {
+            std::fprintf(stderr,
+                "pulse_options_set_app_transport failed: %s "
+                "- continuing with Pulse-owned sockets.\n",
+                pulse_strerror(xport_err));
+            app.bridge_enabled.store(false);
+        } else {
+            app.transport = app.transport_storage;
+            app.bridge_bound.store(true);
+        }
+    }
+
+    install_callbacks(app);
+
+    // We render the video ourselves below (see GLTextureContext) by
+    // pulling RGBA frames out of Pulse via the data-session API. Tell
+    // Pulse NOT to also spawn its own native windows for self-view, the
+    // far end or presentation - these have to be cleared BEFORE the
+    // first connect (i.e. before stage_1), otherwise Pulse pops them up
+    // the moment media starts flowing. Mirrors src/main.cpp.
+    pulse_options_set_self_view_window_handle         (app.pulse, nullptr);
+    pulse_options_set_remote_video_window_handle      (app.pulse, nullptr);
+    pulse_options_set_presentation_video_window_handle(app.pulse, nullptr);
+
+    connect_default_devices(app);
+
+    // Open the RGBA data-session outputs for the streams the UI tiles
+    // already have GL textures for (MAIN = incoming far-end video,
+    // SELFVIEW = our own camera feed). Pulse starts feeding frames as
+    // soon as media exists.
+    if (app.remote_ctx_storage)
+        attach_video_data_session(app.pulse, app.remote_ctx_storage);
+    if (app.selfview_ctx_storage)
+        attach_video_data_session(app.pulse, app.selfview_ctx_storage);
+
+    return true;
 }
 
 // "Call" button handler. UI thread only.
@@ -322,22 +412,24 @@ static void start_call(AppState & app)
         return;
     }
 
+    // Lazy one-shot Pulse bring-up. Until this runs - i.e. for the
+    // entire pre-Call lifetime of the process - we have done nothing
+    // to Pulse at all: no handle, no bind, no callbacks, no devices,
+    // no data sessions. This is what makes the AppTransport checkbox
+    // meaningful: its value at the moment of this call is the value
+    // Pulse will see.
+    if (!lazy_pulse_init(app)) {
+        return;
+    }
+
     set_status(app, "Asking Pulse for a SIP-mode SDP offer...");
 
     // ---- Stage 1: get a local SDP offer from Pulse ---------------------
-    // Note: the AppTransport bridge was (un)bound either at startup from
-    // DOPPLER_SIP_BRIDGE or by the operator clicking the UI checkbox.
-    // Pulse only accepts pulse_options_set_app_transport() while the
-    // session status is UNINITIALIZED - i.e. strictly before this stage 1
-    // call (per pulse_options.h; pulse_setup_stage_1_from_structure /
-    // _from_response_buffer is the named barrier). So we latch
-    // bridge_lockable to false here, just before issuing stage 1: the
-    // checkbox grays out from this frame onward for the rest of the
-    // process. From this point on, app.transport reflects the final
-    // state - non-null means rewrite the SDP below, null means hand
-    // Pulse's SDP (with Pulse-owned sockets) straight to PJSIP.
-    app.bridge_lockable.store(false);
-
+    // The AppTransport bind (if any) was made just above inside
+    // lazy_pulse_init(), still in UNINITIALIZED status. Stage 1 is the
+    // named barrier in pulse_options.h: after this call Pulse rejects
+    // any (un)bind with PULSE_ERROR_ALREADY_CONNECTED, which is what
+    // locks the UI checkbox for the rest of the process.
     PulseSetupStage1Config cfg{};
     cfg.is_sip              = true;
     cfg.disable_trickle_ice = true;   // simpler exchange for direct SIP
@@ -359,10 +451,11 @@ static void start_call(AppState & app)
     // the UDP sockets the AppTransport owns, so the SIP peer sends RTP to
     // *us* and we relay it back into Pulse via pulse_app_transport_push().
     //
-    // Only runs when the bridge was opted into (DOPPLER_SIP_BRIDGE != 0)
-    // AND bind_to_pulse() succeeded at startup. Otherwise app.transport
-    // is nullptr and Pulse's SDP is forwarded to PJSIP unmodified, with
-    // Pulse's own UDP sockets advertised in the INVITE.
+    // Only runs when the bridge was opted into (checkbox ticked at the
+    // moment Call was pressed) AND bind_to_pulse() succeeded inside
+    // lazy_pulse_init(). Otherwise app.transport is nullptr and Pulse's
+    // SDP is forwarded to PJSIP unmodified, with Pulse's own UDP sockets
+    // advertised in the INVITE.
     if (app.transport) {
         std::string xport_err;
         std::string rewritten = app.transport->configure_local_offer(local_sdp, xport_err);
@@ -402,7 +495,7 @@ static void start_hangup(AppState & app)
     // we're somehow in stage-1 without a confirmed dialog, ask Pulse to
     // disconnect anyway so we don't leak its media setup.
     if (app.stage.load() == static_cast<int>(CallStage::Stage1Done)
-            && pulse_is_connected(app.pulse)) {
+            && app.pulse && pulse_is_connected(app.pulse)) {
         pulse_disconnect(app.pulse, nullptr);
         app.stage.store(static_cast<int>(CallStage::Idle));
     }
@@ -449,7 +542,12 @@ static PulseDataSessionConfig * make_video_data_session_config()
     return cfg;
 }
 
-static void init_video_render_ctx(Pulse * pulse, GLTextureContext & ctx,
+// GL-side init for a video tile: create the texture and remember which
+// Pulse content slot it will display. Safe to call before any Pulse
+// handle exists - the data-session attach is deferred to
+// `attach_video_data_session()`, which lazy_pulse_init() runs once the
+// operator presses Call.
+static void init_video_render_ctx(GLTextureContext & ctx,
                                   PulseMediaContent media_content)
 {
     glGenTextures(1, &ctx.texture);
@@ -457,16 +555,30 @@ static void init_video_render_ctx(Pulse * pulse, GLTextureContext & ctx,
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     ctx.media_content = media_content;
+}
 
+// Pulse-side attach: open the RGBA data-session output for this tile's
+// content slot. Must run after pulse_new_external_rest() (so we have a
+// handle) but before stage 1 is irrelevant - data-session connects do
+// not advance Pulse's session status. Driven from lazy_pulse_init().
+static void attach_video_data_session(Pulse * pulse, GLTextureContext * ctx)
+{
     PulseDataSessionConfig * cfg = make_video_data_session_config();
-    pulse_data_session_connect_output(pulse, cfg, media_content);
+    pulse_data_session_connect_output(pulse, cfg, ctx->media_content);
     pulse_data_session_config_free(cfg);
 }
 
 static void shutdown_video_render_ctx(Pulse * pulse, GLTextureContext & ctx)
 {
-    pulse_data_session_disconnect(pulse, PULSE_MEDIA_VIDEO,
-                                  PULSE_MEDIA_OUTPUT, ctx.media_content);
+    // Pulse may be null if the operator quit before ever pressing Call -
+    // in which case attach_video_data_session() never ran, so there's
+    // nothing to disconnect. The GL texture, on the other hand, was
+    // created up front by init_video_render_ctx() so it always needs
+    // releasing.
+    if (pulse) {
+        pulse_data_session_disconnect(pulse, PULSE_MEDIA_VIDEO,
+                                      PULSE_MEDIA_OUTPUT, ctx.media_content);
+    }
     if (ctx.texture) {
         glDeleteTextures(1, &ctx.texture);
         ctx.texture = 0;
@@ -479,6 +591,10 @@ static void shutdown_video_render_ctx(Pulse * pulse, GLTextureContext & ctx)
 // next glTexImage2D will resize the texture automatically.
 static void pump_frame_into_texture(Pulse * pulse, GLTextureContext & ctx)
 {
+    // Before the first Call we have no Pulse handle at all - skip the
+    // pull rather than dereference a null and crash.
+    if (!pulse) return;
+
     PulseDataSessionFrameData * frame = nullptr;
     pulse_data_session_pull_frame_data(pulse, PULSE_MEDIA_VIDEO, &frame,
                                        ctx.media_content, 0);
@@ -544,69 +660,42 @@ static void draw_ui(AppState & app, GLTextureContext & remote_ctx,
     ImGui::EndDisabled();
 
     // ---- AppTransport bridge toggle -----------------------------------
-    // The bridge is bound at startup (DOPPLER_SIP_BRIDGE=1, default).
-    // Pulse only accepts pulse_options_set_app_transport() while the
-    // session status is UNINITIALIZED - i.e. before the first
-    // pulse_setup_stage_1_from_structure() / _from_response_buffer()
-    // call. So the checkbox is interactive UNTIL the first call's stage 1
-    // (tracked by `bridge_lockable`); after that Pulse would reject any
-    // further (un)bind with PULSE_ERROR_ALREADY_CONNECTED, and the
-    // checkbox stays grayed out for the rest of the process lifetime.
+    // Pure intent flag. Nothing about Pulse happens until the operator
+    // presses Call - at that point lazy_pulse_init() reads this value
+    // and decides whether to call pulse_options_set_app_transport().
+    // The checkbox stays interactive until the first Call (`app.pulse`
+    // is still null); after that Pulse's session status has advanced
+    // past UNINITIALIZED and any (un)bind would be rejected, so the
+    // checkbox locks for the remainder of the process.
     ImGui::SameLine();
     const bool toggle_allowed =
         app.transport_storage != nullptr
-        && app.bridge_lockable.load();
+        && app.pulse == nullptr;
     bool bridge_enabled_view = app.bridge_enabled.load();
     ImGui::BeginDisabled(!toggle_allowed);
     if (ImGui::Checkbox("AppTransport bridge", &bridge_enabled_view)) {
-        if (bridge_enabled_view) {
-            PulseError xport_err =
-                app.transport_storage->bind_to_pulse(app.pulse);
-            if (xport_err != PULSE_SUCCESS) {
-                set_status(app,
-                    std::string("pulse_options_set_app_transport failed: ")
-                        + pulse_strerror(xport_err));
-                app.bridge_enabled.store(false);
-                app.bridge_bound.store(false);
-                app.transport = nullptr;
-            } else {
-                app.bridge_enabled.store(true);
-                app.bridge_bound.store(true);
-                app.transport = app.transport_storage;
-                set_status(app, "AppTransport bridge enabled.");
-            }
-        } else {
-            PulseError xport_err = app.transport_storage->unbind_from_pulse();
-            // unbind_from_pulse() clears Pulse's reference even on error;
-            // we mirror that in app state so the next call falls back to
-            // Pulse-owned sockets cleanly.
-            app.bridge_enabled.store(false);
-            app.bridge_bound.store(false);
-            app.transport = nullptr;
-            if (xport_err != PULSE_SUCCESS) {
-                set_status(app,
-                    std::string("pulse_options_set_app_transport(NULL) "
-                                "failed: ")
-                        + pulse_strerror(xport_err));
-            } else {
-                set_status(app, "AppTransport bridge disabled.");
-            }
-        }
+        app.bridge_enabled.store(bridge_enabled_view);
+        set_status(app, bridge_enabled_view
+                            ? "AppTransport bridge will engage on next Call."
+                            : "AppTransport bridge will stay off on next Call.");
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
     if (app.bridge_bound.load()) {
-        ImGui::TextDisabled(app.bridge_lockable.load()
-                            ? "(bound)"
-                            : "(bound - locked)");
-    } else if (bridge_enabled_view) {
-        ImGui::TextDisabled("(bind failed - see status)");
-    } else if (!app.bridge_lockable.load()) {
-        ImGui::TextDisabled("(disabled - locked, stage 1 has run)");
+        ImGui::TextDisabled("(bound - locked)");
+    } else if (app.pulse != nullptr) {
+        // Call has been placed without binding (either checkbox was off,
+        // or bind_to_pulse() failed inside lazy_pulse_init()). Either
+        // way, no further (un)bind is possible on this Pulse handle.
+        ImGui::TextDisabled(bridge_enabled_view
+                            ? "(bind failed - see status)"
+                            : "(disabled - locked, Call has been placed)");
     } else if (app.transport_storage == nullptr) {
         ImGui::TextDisabled("(unavailable)");
     } else {
-        ImGui::TextDisabled("(disabled)");
+        ImGui::TextDisabled(bridge_enabled_view
+                            ? "(pending - will bind on Call)"
+                            : "(disabled)");
     }
 
     ImGui::Separator();
@@ -668,22 +757,25 @@ static void draw_ui(AppState & app, GLTextureContext & remote_ctx,
     // every frame so the panel auto-resizes from one m= section up to
     // however many wires Pulse negotiated.
     //
-    // `app.transport` is non-null iff the startup bind succeeded (see
-    // DOPPLER_SIP_BRIDGE). If the user opted out we render a one-line
-    // notice; if the bind failed we render a different one so the cause
-    // is obvious. Once a call sets up SDP, the snapshot table lights up.
+    // `app.transport` is non-null iff lazy_pulse_init() bound the bridge
+    // on the first Call. Before any Call, or if the user opted out, or
+    // if the bind failed, it stays null and we render a one-line notice.
     ImGui::Spacing();
     ImGui::Separator();
     if (!app.transport) {
-        if (app.bridge_enabled.load())
+        if (app.pulse == nullptr)
             ImGui::TextDisabled(
-                "UDP bridges: AppTransport bind failed at startup - "
-                "Pulse owns sockets directly. See status text above.");
+                "UDP bridges: no Call placed yet - nothing has been wired "
+                "into Pulse. Tick the AppTransport bridge above and press "
+                "Call to engage.");
+        else if (app.bridge_enabled.load())
+            ImGui::TextDisabled(
+                "UDP bridges: AppTransport bind failed when Call was "
+                "placed - Pulse owns sockets directly. See status above.");
         else
             ImGui::TextDisabled(
-                "UDP bridges: AppTransport disabled at startup "
-                "(DOPPLER_SIP_BRIDGE=0). Pulse owns sockets directly. "
-                "Restart without that env var to engage the bridge.");
+                "UDP bridges: AppTransport was unchecked when Call was "
+                "placed - Pulse owns sockets directly.");
     } else {
         std::vector<doppler::BridgeStat> stats = app.transport->snapshot();
         if (stats.empty()) {
@@ -781,94 +873,51 @@ int main()
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 150");
 
-    // ---- Boot Pulse ------------------------------------------------------
+    // ---- Pre-Call setup --------------------------------------------------
+    // CRITICAL: nothing in this block touches Pulse state. We do not
+    // even create the Pulse handle until the operator presses Call -
+    // see lazy_pulse_init() above. The point is to give the operator
+    // a real choice with the AppTransport checkbox: until they press
+    // Call, no callback has been registered with Pulse, no devices
+    // have been attached, no data sessions exist.
     pulse_global_logger_callback(on_pulse_log, nullptr);
 
     AppState app;
 
-    // Pick the initial AppTransport bridge state from DOPPLER_SIP_BRIDGE
+    // Seed the AppTransport bridge checkbox from DOPPLER_SIP_BRIDGE
     // (default = on, because routing media through our app-owned UDP
-    // sockets is the whole point of this demo). Pulse only accepts
-    // pulse_options_set_app_transport() while the session status is
-    // UNINITIALIZED, so we bind right after pulse_new_external_rest()
-    // below and well before the first pulse_setup_stage_1_*() call.
-    // The UI checkbox can flip the bridge until that first stage 1
-    // call; after that, Pulse returns PULSE_ERROR_ALREADY_CONNECTED for
-    // any further (un)bind and the checkbox locks for the rest of the
-    // process. Set DOPPLER_SIP_BRIDGE=0 to skip the startup bind and
-    // start in Pulse-owned-sockets mode (still toggleable until stage 1).
+    // sockets is the whole point of this demo). This is *only* an
+    // initial value for the UI checkbox - the actual bind doesn't
+    // happen until lazy_pulse_init() runs on the first Call press, at
+    // which point whatever value the checkbox holds is what Pulse sees.
     bool bridge_wanted = true;
     if (const char * env = std::getenv("DOPPLER_SIP_BRIDGE")) {
         bridge_wanted = !(env[0] == '0' && env[1] == '\0');
     }
     app.bridge_enabled.store(bridge_wanted);
 
-    // External-rest mode: PJSIP owns SIP signalling, Pulse is purely a
-    // media engine. The update_sdp callback fires if Pulse later wants
-    // to renegotiate (e.g. add a content stream); we register it against
-    // `&app` so it can post into the UI status line.
-    PulseExternalRestCallbackConfig ext_rest_cfg{};
-    ext_rest_cfg.update_sdp_callback      = on_pulse_update_sdp;
-    ext_rest_cfg.update_sdp_user_context  = &app;
-    app.pulse = pulse_new_external_rest(ext_rest_cfg);
-    if (!app.pulse) {
-        std::fprintf(stderr, "pulse_new_external_rest() returned NULL\n");
-        return 1;
-    }
-
-    // ---- Boot the application-owned RTP/RTCP transport (FIRST) -----------
-    // We do the startup bind here on the fresh Pulse handle - well before
-    // pulse_setup_stage_1_*(), which is the barrier named in pulse_options.h
-    // (status != UNINITIALIZED -> PULSE_ERROR_ALREADY_CONNECTED). The
-    // connect_default_devices / init_video_render_ctx calls further below
-    // do NOT advance the status, so the operator can still toggle the
-    // bridge via the UI checkbox up until the first call's stage 1; we
-    // just don't make them do that on the happy path. If DOPPLER_SIP_BRIDGE=0
-    // we skip the startup bind entirely - app.transport stays nullptr and
-    // every later `if (app.transport)` site short-circuits, leaving Pulse
-    // to drive its own UDP sockets unless the operator ticks the box.
+    // The AppTransport instance itself - its constructor only probes
+    // the local egress IP (one UDP socket connect()ed to 8.8.8.8:53,
+    // no packets sent) and does NOT call into Pulse. The actual
+    // bind_to_pulse() is deferred to lazy_pulse_init() on first Call.
     doppler::AppTransport transport;
     app.transport_storage = &transport;
-    if (bridge_wanted) {
-        PulseError xport_err = transport.bind_to_pulse(app.pulse);
-        if (xport_err != PULSE_SUCCESS) {
-            std::fprintf(stderr,
-                "pulse_options_set_app_transport failed at startup: %s "
-                "- continuing with Pulse-owned sockets.\n",
-                pulse_strerror(xport_err));
-            app.bridge_enabled.store(false);
-        } else {
-            app.transport = &transport;
-            app.bridge_bound.store(true);
-        }
-    }
 
-    install_callbacks(app);
-
-    // We render the video ourselves below (see GLTextureContext) by pulling
-    // RGBA frames out of Pulse via the data-session API. Tell Pulse NOT
-    // to also spawn its own native windows for self-view, the far end
-    // or presentation - these have to be cleared BEFORE the first
-    // connect (i.e. before stage_1), otherwise Pulse pops them up the
-    // moment media starts flowing. Mirrors src/main.cpp.
-    pulse_options_set_self_view_window_handle         (app.pulse, nullptr);
-    pulse_options_set_remote_video_window_handle      (app.pulse, nullptr);
-    pulse_options_set_presentation_video_window_handle(app.pulse, nullptr);
-
-    connect_default_devices(app);
-
-    // Open RGBA data-session outputs for the streams we want to render
-    // inline in the ImGui window: MAIN (incoming far-end video - this
-    // answers "are we actually receiving anything?") and SELFVIEW (our
-    // own camera feed - a quick capture sanity check). Pulse starts
-    // feeding frames in as soon as media exists; pump_frame_into_texture
-    // picks them up each ImGui frame from inside draw_ui().
+    // GL-side init for the video tiles. This is harmless to do up
+    // front (it's just glGenTextures + glTexParameteri); the Pulse
+    // data-session attach is deferred to lazy_pulse_init().
     GLTextureContext remote_ctx;
     GLTextureContext selfview_ctx;
-    init_video_render_ctx(app.pulse, remote_ctx,   PULSE_MEDIA_CONTENT_MAIN);
-    init_video_render_ctx(app.pulse, selfview_ctx, PULSE_MEDIA_CONTENT_SELFVIEW);
+    init_video_render_ctx(remote_ctx,   PULSE_MEDIA_CONTENT_MAIN);
+    init_video_render_ctx(selfview_ctx, PULSE_MEDIA_CONTENT_SELFVIEW);
+    app.remote_ctx_storage   = &remote_ctx;
+    app.selfview_ctx_storage = &selfview_ctx;
 
     // ---- Boot PJSIP ------------------------------------------------------
+    // PJSIP setup does not touch Pulse, so it's fine to run here. Note
+    // we still bring SIP up unconditionally: starting the PJSIP UA does
+    // not initiate any outbound traffic until place_call() is invoked
+    // from inside start_call().
     doppler::SipUA sip;
     std::string sip_err = sip.start("doppler-sip/0.1", /*local_port=*/0);
     if (!sip_err.empty()) {
@@ -896,20 +945,35 @@ int main()
 
     // ---- Shutdown --------------------------------------------------------
     sip.stop();                     // sends BYE if needed
-    if (pulse_is_connected(app.pulse))
-        pulse_disconnect(app.pulse, nullptr);
-    // Disconnect the video data-sessions and delete the GL textures
-    // before we tear Pulse down. The GL context is still current here
-    // (glfwDestroyWindow happens later), so glDeleteTextures is safe.
-    shutdown_video_render_ctx(app.pulse, remote_ctx);
-    shutdown_video_render_ctx(app.pulse, selfview_ctx);
-    // Stop the reader thread, close sockets, clear the app-transport
-    // binding - all before pulse_free() so Pulse never sees a dangling
-    // callback while it's tearing the media engine down. Safe (no-op)
-    // when the bridge checkbox stayed off and we never bound it.
-    transport.shutdown();
-    uninstall_callbacks(app);
-    pulse_free(app.pulse);
+    // Everything Pulse-related is conditional on `app.pulse` having been
+    // created by lazy_pulse_init() - if the operator quit before ever
+    // pressing Call, none of these calls are needed (and the Pulse
+    // handle doesn't exist, so most of them aren't even legal).
+    if (app.pulse) {
+        if (pulse_is_connected(app.pulse))
+            pulse_disconnect(app.pulse, nullptr);
+        // Disconnect the video data-sessions before we tear Pulse down.
+        // The GL context is still current here (glfwDestroyWindow happens
+        // later), so glDeleteTextures inside shutdown_video_render_ctx is
+        // safe.
+        shutdown_video_render_ctx(app.pulse, remote_ctx);
+        shutdown_video_render_ctx(app.pulse, selfview_ctx);
+        // Stop the reader thread, close sockets, clear the app-transport
+        // binding - all before pulse_free() so Pulse never sees a dangling
+        // callback while it's tearing the media engine down. Safe (no-op)
+        // when the bridge checkbox stayed off and we never bound it.
+        transport.shutdown();
+        uninstall_callbacks(app);
+        pulse_free(app.pulse);
+        app.pulse = nullptr;
+    } else {
+        // Pulse was never created - just release the GL textures and
+        // make sure the AppTransport's reader thread + sockets are
+        // torn down (in the never-bound case shutdown() is a no-op).
+        shutdown_video_render_ctx(nullptr, remote_ctx);
+        shutdown_video_render_ctx(nullptr, selfview_ctx);
+        transport.shutdown();
+    }
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

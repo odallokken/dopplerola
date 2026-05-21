@@ -110,11 +110,19 @@ actually receiving without Pulse spawning its own native windows
   `PULSE_ERROR_ALREADY_CONNECTED`. The `connect_default_devices` /
   `data_session_connect_*` / `device_session_connect_*` calls do NOT
   advance the status, so the bind can happen at any point between
-  `pulse_new_external_rest()` and the first stage 1. The demo binds at
-  startup driven by `DOPPLER_SIP_BRIDGE` (default = on; set
-  `DOPPLER_SIP_BRIDGE=0` to start with Pulse-owned sockets) and lets
-  the operator flip the bridge via the UI checkbox until the first call
-  is placed - the checkbox then locks for the lifetime of the process.
+  `pulse_new_external_rest()` and the first stage 1. The demo defers
+  the entire Pulse bring-up - `pulse_new_external_rest()`, the bind,
+  callback registration, native-window suppression, default device
+  attach, data-session attach - until the operator presses **Call**
+  (see `lazy_pulse_init()` in `src/main.cpp`). Before that, the demo
+  does nothing to Pulse at all, so the AppTransport checkbox is a
+  pure intent flag: untick it and Pulse genuinely never sees our
+  callback. `DOPPLER_SIP_BRIDGE` only seeds the initial checkbox
+  state (default = on); set `DOPPLER_SIP_BRIDGE=0` to start with the
+  checkbox unticked. The checkbox is interactive up until the first
+  Call has been placed - after that Pulse has advanced past
+  `UNINITIALIZED` and the checkbox locks for the lifetime of the
+  process.
 * **App-transport `.so` mismatch**: the channel-aware app-transport API
   (`PulseAppChannelId`, the 4-arg `PulseAppPacketCallback`, etc.) is what
   this demo's `app_transport.cpp` is written against — those headers
