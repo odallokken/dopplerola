@@ -106,9 +106,14 @@ bindings, same auto-spawned video windows.
   symbol names are unchanged) but will **misbehave at runtime** until the
   new `.so` is in place. The link itself is unsound — the old `.so`'s
   `pulse_app_transport_push` is the 3-arg variant.
-* **Local IPv4 address**: `AppTransport` advertises `127.0.0.1` in the
-  rewritten SDP by default. Set `DOPPLER_SIP_LOCAL_IP=<routable-addr>`
-  before launching to make the demo work across a network.
+* **Local IPv4 address**: `AppTransport` rewrites the `c=IN IP4` line in
+  Pulse's stage-1 offer (Pulse stamps `127.0.0.1` there because, with an
+  app-transport set, it no longer does ICE / host-candidate gathering).
+  The replacement IP is auto-detected by opening a UDP socket, calling
+  `connect()` to `8.8.8.8:53` (no packets sent — this just primes the
+  kernel's route lookup) and reading back `getsockname()`, which yields
+  the egress interface's address. Set `DOPPLER_SIP_LOCAL_IP=<addr>` to
+  override on multi-homed / VPN hosts where the auto-pick is wrong.
 * `PulseSetupStage2Config::call_uuid` is set to the SIP **Call-ID** of the
   outgoing dialog. This is a placeholder choice — Pulse's REST path normally
   uses the Infinity-side call UUID. Revisit once we know what Pulse actually

@@ -27,8 +27,13 @@
 //    * IPv4-only (matches the bulk of SIP video deployments).
 //    * No SRTP / DTLS - plain RTP, the only thing the app-transport API
 //      surfaces today.
-//    * The local IP advertised in the rewritten SDP defaults to 127.0.0.1
-//      and is overridable via the DOPPLER_SIP_LOCAL_IP env var.
+//    * The local IP advertised in the rewritten SDP is auto-detected
+//      using a connected-UDP-socket probe against 8.8.8.8 (no packets
+//      sent - just primes the kernel route so getsockname() yields the
+//      egress interface address). Override with the DOPPLER_SIP_LOCAL_IP
+//      env var when the auto-detected address is wrong (multi-homed
+//      hosts, VPN routing, etc.). Falls back to 127.0.0.1 only if the
+//      box has no network at all.
 // ============================================================================
 #pragma once
 

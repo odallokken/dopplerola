@@ -295,14 +295,61 @@ static bool channel_id_equal(const PulseAppChannelId & a,
     return a.content == b.content && a.type == b.type && a.kind == b.kind;
 }
 
-// Pick the local IPv4 address to advertise in the rewritten SDP. The demo
-// defaults to 127.0.0.1 because most ad-hoc tests are localhost; real
-// deployments set DOPPLER_SIP_LOCAL_IP to the routable address PJSIP's
-// transport already uses.
+// Pick the local IPv4 address to advertise in the rewritten SDP.
+//
+// IMPORTANT: Pulse's stage-1 offer comes back with 127.0.0.1 in its c=
+// lines, because the moment we set an app-transport Pulse stops doing
+// its own ICE / host-candidate gathering - it has no idea what IP the
+// sockets WE own are reachable on. If we ship that 127.0.0.1 to the
+// remote SIP peer, the peer will dutifully send RTP to its own
+// loopback and we'll never see a packet. So we MUST replace it with
+// an address the peer can actually route to. The same value is what
+// the UI shows for each bridge's "Local" endpoint.
+//
+// Resolution order:
+//   1) DOPPLER_SIP_LOCAL_IP env var - explicit override, wins always.
+//   2) "Connected UDP socket" trick: create a UDP socket and connect()
+//      it to a public, non-local address. connect() on a UDP socket
+//      sends no packets but forces the kernel to pick the egress
+//      interface; getsockname() then yields that interface's IPv4
+//      address. This matches what PJSIP picks in pj_gethostip() and
+//      is what real deployments want.
+//   3) Last-ditch 127.0.0.1 if even the discovery socket failed (no
+//      network at all) - the call won't work, but at least the SDP
+//      is syntactically valid and the UI surfaces the local-ish IP.
 static std::string pick_local_ip()
 {
     const char * env = std::getenv("DOPPLER_SIP_LOCAL_IP");
     if (env && env[0]) return env;
+
+    int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd >= 0) {
+        // 8.8.8.8:53 is a convenient unreachable-from-loopback target.
+        // No traffic actually leaves the box - connect() on UDP only
+        // primes the routing table entry for subsequent sendto()s,
+        // which we never issue. Port 53 is arbitrary.
+        sockaddr_in probe{};
+        probe.sin_family      = AF_INET;
+        probe.sin_port        = htons(53);
+        probe.sin_addr.s_addr = htonl(0x08080808u); // 8.8.8.8
+
+        if (::connect(fd, reinterpret_cast<sockaddr *>(&probe),
+                      sizeof(probe)) == 0) {
+            sockaddr_in local{};
+            socklen_t   len = sizeof(local);
+            if (::getsockname(fd, reinterpret_cast<sockaddr *>(&local),
+                              &len) == 0) {
+                char buf[INET_ADDRSTRLEN] = {0};
+                if (::inet_ntop(AF_INET, &local.sin_addr, buf, sizeof(buf))
+                        && buf[0] != '\0') {
+                    ::close(fd);
+                    return std::string(buf);
+                }
+            }
+        }
+        ::close(fd);
+    }
+    // No usable interface - the call is doomed but don't crash.
     return "127.0.0.1";
 }
 
