@@ -576,6 +576,21 @@ PulseError AppTransport::bind_to_pulse(Pulse * client)
                                            &Impl::on_destroy);
 }
 
+PulseError AppTransport::unbind_from_pulse()
+{
+    // Mirror of bind_to_pulse() that just clears Pulse's reference to us.
+    // The local sockets and reader thread are left alone so a subsequent
+    // bind_to_pulse() can re-attach without re-allocating ports (which
+    // matters because configure_local_offer() may already have published
+    // those ports in an SDP).
+    if (!impl_->client) {
+        return PULSE_SUCCESS;
+    }
+    Pulse * client = impl_->client;
+    impl_->client = nullptr;
+    return pulse_options_set_app_transport(client, nullptr, nullptr, nullptr);
+}
+
 std::string AppTransport::configure_local_offer(const std::string & pulse_offer_sdp,
                                                 std::string &       out_error)
 {

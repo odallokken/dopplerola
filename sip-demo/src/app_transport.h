@@ -72,12 +72,24 @@ public:
     AppTransport(const AppTransport &)             = delete;
     AppTransport & operator=(const AppTransport &) = delete;
 
-    // Register our PulseAppPacketCallback with Pulse. Must be called BEFORE
-    // pulse_setup_stage_1_from_structure(), otherwise Pulse refuses the
-    // call with PULSE_ERROR_ALREADY_CONNECTED.
+    // Register our PulseAppPacketCallback with Pulse. Pulse only accepts
+    // this while the session status is UNINITIALIZED, i.e. strictly
+    // before pulse_setup_stage_1_from_structure() / _from_response_buffer()
+    // (the barrier named in pulse_options.h). After stage 1 the call
+    // returns PULSE_ERROR_ALREADY_CONNECTED. The connect_default_devices /
+    // data_session_connect_* calls do NOT count as the barrier, so it's
+    // fine to bind any time between pulse_new_external_rest() and the
+    // first stage 1 - which is the window the UI checkbox exposes.
     //
     // Returns the PulseError from pulse_options_set_app_transport().
     PulseError bind_to_pulse(Pulse * client);
+
+    // Detach our callback from Pulse without tearing down the local UDP
+    // sockets or the reader thread, so a later bind_to_pulse() can re-attach
+    // cheaply. Same UNINITIALIZED-only window as bind_to_pulse(); after
+    // stage 1 Pulse returns PULSE_ERROR_ALREADY_CONNECTED here too.
+    // No-op if we never bound (or were already unbound).
+    PulseError unbind_from_pulse();
 
     // Take the SDP offer Pulse returned from stage 1, allocate one local
     // UDP socket per wire it describes, and return a rewritten SDP whose

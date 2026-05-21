@@ -102,18 +102,19 @@ actually receiving without Pulse spawning its own native windows
 
 ## Notes / things to investigate
 
-* **AppTransport bind is startup-only**: `pulse_options_set_app_transport()`
-  is rejected with `PULSE_ERROR_ALREADY_CONNECTED` the moment the Pulse
-  client enters the connected state, and that happens implicitly the
-  first time *any* `*_connect_*` API runs
-  (`pulse_device_session_connect_system_default` for camera/mic/speaker,
-  `pulse_data_session_connect_output` for the video tiles, `pulse_setup_stage_1_*`
-  for the SDP offer). All of those run during normal setup, so the bind
-  has to be the very first thing we do on a freshly-created Pulse
-  handle. The demo therefore latches the decision at startup from the
-  `DOPPLER_SIP_BRIDGE` env var (default = on; set `DOPPLER_SIP_BRIDGE=0`
-  to fall back to Pulse-owned sockets) and surfaces the result as a
-  read-only checkbox + label in the UI. There is **no runtime toggle**.
+* **AppTransport bind window**: `pulse_options_set_app_transport()` is
+  only accepted while the Pulse session status is `UNINITIALIZED`. The
+  named barrier (per `pulse_options.h`) is
+  `pulse_setup_stage_1_from_structure` / `_from_response_buffer` - after
+  the first stage 1 call, any further (un)bind returns
+  `PULSE_ERROR_ALREADY_CONNECTED`. The `connect_default_devices` /
+  `data_session_connect_*` / `device_session_connect_*` calls do NOT
+  advance the status, so the bind can happen at any point between
+  `pulse_new_external_rest()` and the first stage 1. The demo binds at
+  startup driven by `DOPPLER_SIP_BRIDGE` (default = on; set
+  `DOPPLER_SIP_BRIDGE=0` to start with Pulse-owned sockets) and lets
+  the operator flip the bridge via the UI checkbox until the first call
+  is placed - the checkbox then locks for the lifetime of the process.
 * **App-transport `.so` mismatch**: the channel-aware app-transport API
   (`PulseAppChannelId`, the 4-arg `PulseAppPacketCallback`, etc.) is what
   this demo's `app_transport.cpp` is written against — those headers
