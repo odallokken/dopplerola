@@ -662,8 +662,12 @@ std::string AppTransport::configure_local_offer(const std::string & pulse_offer_
             sl.lines[s.m_line_idx] = rewrite_m_line_port(sl.lines[s.m_line_idx], port);
             if (s.has_a_rtcp_line_idx) {
                 // Some offers put a=rtcp: even with mux; keep it consistent.
-                char buf[24];
-                std::snprintf(buf, sizeof(buf), "a=rtcp:%u", port);
+                // Include the connection address per RFC 3605 so receivers
+                // that read the a=rtcp line in isolation (rather than
+                // inheriting from c=) still know where to send RTCP.
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "a=rtcp:%u IN IP4 %s",
+                              port, impl_->advertised_ip.c_str());
                 sl.lines[s.a_rtcp_line_idx] = buf;
             }
         } else {
@@ -690,8 +694,13 @@ std::string AppTransport::configure_local_offer(const std::string & pulse_offer_
             impl_->channels.push_back(std::move(rtcp_ch));
 
             sl.lines[s.m_line_idx] = rewrite_m_line_port(sl.lines[s.m_line_idx], rtp_port);
-            char buf[24];
-            std::snprintf(buf, sizeof(buf), "a=rtcp:%u", rtcp_port);
+            // Per RFC 3605, a=rtcp may carry "<port> <nettype> <addrtype>
+            // <addr>". We always emit the full form using the same IP we
+            // stamp into c= below, so the RTCP endpoint is unambiguous
+            // even for parsers that don't fall back to the c= line.
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "a=rtcp:%u IN IP4 %s",
+                          rtcp_port, impl_->advertised_ip.c_str());
             if (s.has_a_rtcp_line_idx) {
                 sl.lines[s.a_rtcp_line_idx] = buf;
             } else {
