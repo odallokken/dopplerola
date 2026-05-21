@@ -256,6 +256,37 @@ struct Channel {
     unsigned          local_port = 0;
     sockaddr_in       remote{};    // zero until configure_remote_answer()
     bool              remote_set = false;
+
+    // Live counters. Written from Pulse's worker thread (tx) and our
+    // reader thread (rx); read from the UI thread via snapshot(). Atomic
+    // so all of that stays lock-free.
+    std::atomic<uint64_t> tx_packets{0};
+    std::atomic<uint64_t> tx_bytes{0};
+    std::atomic<uint64_t> rx_packets{0};
+    std::atomic<uint64_t> rx_bytes{0};
+
+    // Channels live in a std::vector that's append-only after
+    // configure_local_offer; allow it to grow by giving Channel a
+    // move-constructor that copies the atomics' current values.
+    Channel() = default;
+    Channel(const Channel &) = delete;
+    Channel & operator=(const Channel &) = delete;
+    Channel(Channel && o) noexcept
+      : id(o.id), fd(o.fd), local_port(o.local_port), remote(o.remote),
+        remote_set(o.remote_set),
+        tx_packets(o.tx_packets.load(std::memory_order_relaxed)),
+        tx_bytes  (o.tx_bytes  .load(std::memory_order_relaxed)),
+        rx_packets(o.rx_packets.load(std::memory_order_relaxed)),
+        rx_bytes  (o.rx_bytes  .load(std::memory_order_relaxed)) {}
+    Channel & operator=(Channel && o) noexcept {
+        id = o.id; fd = o.fd; local_port = o.local_port;
+        remote = o.remote; remote_set = o.remote_set;
+        tx_packets.store(o.tx_packets.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        tx_bytes  .store(o.tx_bytes  .load(std::memory_order_relaxed), std::memory_order_relaxed);
+        rx_packets.store(o.rx_packets.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        rx_bytes  .store(o.rx_bytes  .load(std::memory_order_relaxed), std::memory_order_relaxed);
+        return *this;
+    }
 };
 
 static bool channel_id_equal(const PulseAppChannelId & a,
@@ -351,6 +382,7 @@ struct AppTransport::Impl {
     {
         sockaddr_in remote{};
         int fd = -1;
+        Channel * chan = nullptr;
         {
             std::lock_guard<std::mutex> lock(remote_mtx);
             for (auto & c : channels) {
@@ -358,6 +390,7 @@ struct AppTransport::Impl {
                     if (!c.remote_set || c.fd < 0) return;
                     remote = c.remote;
                     fd     = c.fd;
+                    chan   = &c;
                     break;
                 }
             }
@@ -365,8 +398,15 @@ struct AppTransport::Impl {
         if (fd < 0) return;
         // Best-effort send; the API doc explicitly says outbound packets
         // that can't be sent are dropped.
-        ::sendto(fd, data, static_cast<size_t>(size), 0,
-                 reinterpret_cast<sockaddr *>(&remote), sizeof(remote));
+        ssize_t sent = ::sendto(fd, data, static_cast<size_t>(size), 0,
+                                reinterpret_cast<sockaddr *>(&remote), sizeof(remote));
+        if (sent > 0 && chan) {
+            // Safe: `channels` is append-only after configure_local_offer,
+            // so the pointer stays valid until shutdown joins us.
+            chan->tx_packets.fetch_add(1, std::memory_order_relaxed);
+            chan->tx_bytes.fetch_add(static_cast<uint64_t>(sent),
+                                     std::memory_order_relaxed);
+        }
     }
 
     // Inbound reader thread: poll() over all sockets + the wake pipe,
@@ -376,12 +416,14 @@ struct AppTransport::Impl {
     {
         std::vector<pollfd> pfds;
         std::vector<PulseAppChannelId> ids;
-        // Snapshot of (fd, id) at thread start; the channels vector itself
-        // is fixed by the time we start (configure_local_offer ran).
-        for (const auto & c : channels) {
+        std::vector<Channel *> chans;
+        // Snapshot of (fd, id, chan*) at thread start; the channels vector
+        // itself is fixed by the time we start (configure_local_offer ran).
+        for (auto & c : channels) {
             if (c.fd < 0) continue;
             pfds.push_back({ c.fd, POLLIN, 0 });
             ids.push_back(c.id);
+            chans.push_back(&c);
         }
         // Wake pipe is the last entry.
         pfds.push_back({ wake_r, POLLIN, 0 });
@@ -408,6 +450,9 @@ struct AppTransport::Impl {
                         if (got < 0 && errno == EINTR) continue;
                         break;  // EAGAIN/EWOULDBLOCK or closed
                     }
+                    chans[i]->rx_packets.fetch_add(1, std::memory_order_relaxed);
+                    chans[i]->rx_bytes.fetch_add(static_cast<uint64_t>(got),
+                                                 std::memory_order_relaxed);
                     if (client) {
                         pulse_app_transport_push(client, ids[i],
                                                  buf.data(),
@@ -520,7 +565,7 @@ std::string AppTransport::configure_local_offer(const std::string & pulse_offer_
             ch.id = PulseAppChannelId{ content, type, PULSE_APP_CHANNEL_KIND_MUX };
             ch.fd = fd;
             ch.local_port = port;
-            impl_->channels.push_back(ch);
+            impl_->channels.push_back(std::move(ch));
             // Rewrite the m= line port; the rtcp-mux line stays as-is.
             sl.lines[s.m_line_idx] = rewrite_m_line_port(sl.lines[s.m_line_idx], port);
             if (s.has_a_rtcp_line_idx) {
@@ -544,13 +589,13 @@ std::string AppTransport::configure_local_offer(const std::string & pulse_offer_
             rtp_ch.id = PulseAppChannelId{ content, type, PULSE_APP_CHANNEL_KIND_RTP };
             rtp_ch.fd = rtp_fd;
             rtp_ch.local_port = rtp_port;
-            impl_->channels.push_back(rtp_ch);
+            impl_->channels.push_back(std::move(rtp_ch));
 
             Channel rtcp_ch;
             rtcp_ch.id = PulseAppChannelId{ content, type, PULSE_APP_CHANNEL_KIND_RTCP };
             rtcp_ch.fd = rtcp_fd;
             rtcp_ch.local_port = rtcp_port;
-            impl_->channels.push_back(rtcp_ch);
+            impl_->channels.push_back(std::move(rtcp_ch));
 
             sl.lines[s.m_line_idx] = rewrite_m_line_port(sl.lines[s.m_line_idx], rtp_port);
             char buf[24];
@@ -637,5 +682,68 @@ std::string AppTransport::configure_remote_answer(const std::string & remote_ans
 }
 
 void AppTransport::shutdown() { if (impl_) impl_->shutdown(); }
+
+namespace {
+
+// Map (content, type) back to the SDP-ish media token we show in the UI.
+// Audio is just "audio"; video on MAIN is "video", on PRESENTATION it's
+// "slides" (the BFCP/screen-share label most users recognise).
+static const char * media_label(PulseMediaContent content, PulseMediaType type)
+{
+    if (type == PULSE_MEDIA_AUDIO) return "audio";
+    if (type == PULSE_MEDIA_VIDEO)
+        return (content == PULSE_MEDIA_CONTENT_PRESENTATION) ? "slides" : "video";
+    return "?";
+}
+
+static const char * kind_label(PulseAppChannelKind kind)
+{
+    switch (kind) {
+        case PULSE_APP_CHANNEL_KIND_MUX:  return "RTP+RTCP";
+        case PULSE_APP_CHANNEL_KIND_RTP:  return "RTP";
+        case PULSE_APP_CHANNEL_KIND_RTCP: return "RTCP";
+    }
+    return "?";
+}
+
+static std::string ip_port_str(const sockaddr_in & sa)
+{
+    char ip[INET_ADDRSTRLEN] = {0};
+    ::inet_ntop(AF_INET, &sa.sin_addr, ip, sizeof(ip));
+    char buf[INET_ADDRSTRLEN + 8];
+    std::snprintf(buf, sizeof(buf), "%s:%u", ip, ntohs(sa.sin_port));
+    return buf;
+}
+
+} // namespace
+
+std::vector<BridgeStat> AppTransport::snapshot() const
+{
+    std::vector<BridgeStat> out;
+    if (!impl_) return out;
+
+    std::lock_guard<std::mutex> lock(impl_->remote_mtx);
+    out.reserve(impl_->channels.size());
+    for (const auto & c : impl_->channels) {
+        BridgeStat s;
+        s.media = media_label(c.id.content, c.id.type);
+        s.kind  = kind_label(c.id.kind);
+
+        char local_buf[64];
+        std::snprintf(local_buf, sizeof(local_buf), "%s:%u",
+                      impl_->advertised_ip.c_str(), c.local_port);
+        s.local_endpoint = local_buf;
+
+        s.remote_endpoint = c.remote_set ? ip_port_str(c.remote)
+                                         : std::string("(no remote yet)");
+
+        s.tx_packets = c.tx_packets.load(std::memory_order_relaxed);
+        s.tx_bytes   = c.tx_bytes  .load(std::memory_order_relaxed);
+        s.rx_packets = c.rx_packets.load(std::memory_order_relaxed);
+        s.rx_bytes   = c.rx_bytes  .load(std::memory_order_relaxed);
+        out.push_back(std::move(s));
+    }
+    return out;
+}
 
 } // namespace doppler

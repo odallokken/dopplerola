@@ -26,6 +26,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -395,6 +396,59 @@ static void draw_ui(AppState & app)
     ImGui::TextWrapped("%s", status_text.c_str());
     if (!progress_text.empty())
         ImGui::TextWrapped("%s", progress_text.c_str());
+
+    // ---- Live per-bridge UDP counters ---------------------------------
+    // One row per AppTransport channel (= one UDP socket), built fresh
+    // every frame so the panel auto-resizes from one m= section up to
+    // however many wires Pulse negotiated. Empty until configure_local_offer
+    // has run, so it transparently handles the "no call yet" state too.
+    if (app.transport) {
+        std::vector<doppler::BridgeStat> stats = app.transport->snapshot();
+        ImGui::Spacing();
+        ImGui::Separator();
+        if (stats.empty()) {
+            ImGui::TextDisabled("UDP bridges: none yet (no SDP offered).");
+        } else {
+            ImGui::Text("UDP bridges (%zu):", stats.size());
+            const ImGuiTableFlags flags = ImGuiTableFlags_Borders
+                                        | ImGuiTableFlags_RowBg
+                                        | ImGuiTableFlags_SizingStretchProp;
+            if (ImGui::BeginTable("udp_bridges", 7, flags)) {
+                ImGui::TableSetupColumn("Media");
+                ImGui::TableSetupColumn("Kind");
+                ImGui::TableSetupColumn("Local");
+                ImGui::TableSetupColumn("Remote");
+                ImGui::TableSetupColumn("TX (pkts / bytes)");
+                ImGui::TableSetupColumn("RX (pkts / bytes)");
+                ImGui::TableSetupColumn("Direction");
+                ImGui::TableHeadersRow();
+
+                for (const auto & s : stats) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn(); ImGui::TextUnformatted(s.media.c_str());
+                    ImGui::TableNextColumn(); ImGui::TextUnformatted(s.kind.c_str());
+                    ImGui::TableNextColumn(); ImGui::TextUnformatted(s.local_endpoint.c_str());
+                    ImGui::TableNextColumn(); ImGui::TextUnformatted(s.remote_endpoint.c_str());
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%llu / %llu",
+                                static_cast<unsigned long long>(s.tx_packets),
+                                static_cast<unsigned long long>(s.tx_bytes));
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%llu / %llu",
+                                static_cast<unsigned long long>(s.rx_packets),
+                                static_cast<unsigned long long>(s.rx_bytes));
+                    ImGui::TableNextColumn();
+                    // Directional indicator: arrows light up as soon as the
+                    // first packet flows in each direction, so at a glance
+                    // you can see which legs are "live".
+                    const char * tx_arrow = (s.tx_packets > 0) ? "TX>" : "tx ";
+                    const char * rx_arrow = (s.rx_packets > 0) ? "<RX" : " rx";
+                    ImGui::Text("%s %s", tx_arrow, rx_arrow);
+                }
+                ImGui::EndTable();
+            }
+        }
+    }
 
     ImGui::Spacing();
     ImGui::Separator();

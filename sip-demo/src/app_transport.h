@@ -32,13 +32,32 @@
 // ============================================================================
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <pexpulse/pulse.h>
 #include <pexpulse/pulse_types.h>
 
 namespace doppler {
+
+// Snapshot of one bridge's live counters + identifiers, returned by
+// AppTransport::snapshot() for UI rendering. Cheap to copy; the UI
+// thread polls this once per frame and feeds it into an ImGui table.
+struct BridgeStat {
+    // Identifiers parsed from the SDP / channel id:
+    std::string  media;        // "audio" / "video" / "slides"
+    std::string  kind;         // "RTP" / "RTCP" / "RTP+RTCP" (mux)
+    std::string  local_endpoint;   // "<advertised_ip>:<local_port>"
+    std::string  remote_endpoint;  // "<peer_ip>:<peer_port>" or "(no remote yet)"
+
+    // Live counters (snapshotted from atomics).
+    uint64_t     tx_packets = 0;
+    uint64_t     tx_bytes   = 0;
+    uint64_t     rx_packets = 0;
+    uint64_t     rx_bytes   = 0;
+};
 
 class AppTransport {
 public:
@@ -71,6 +90,12 @@ public:
     // PulseAppChannelId. Returns empty on success or a human-readable
     // error otherwise.
     std::string configure_remote_answer(const std::string & remote_answer_sdp);
+
+    // Snapshot of every bridge's identifiers + live counters, in the
+    // order the SDP offer introduced them (audio first, then video,
+    // RTP before RTCP within a split section). Safe to call from any
+    // thread. Returned vector is freshly allocated.
+    std::vector<BridgeStat> snapshot() const;
 
     // Tear sockets down and unbind from Pulse. Safe to call any number of
     // times. Called automatically by the destructor.
