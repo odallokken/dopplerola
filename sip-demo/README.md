@@ -102,6 +102,18 @@ actually receiving without Pulse spawning its own native windows
 
 ## Notes / things to investigate
 
+* **AppTransport bind is startup-only**: `pulse_options_set_app_transport()`
+  is rejected with `PULSE_ERROR_ALREADY_CONNECTED` the moment the Pulse
+  client enters the connected state, and that happens implicitly the
+  first time *any* `*_connect_*` API runs
+  (`pulse_device_session_connect_system_default` for camera/mic/speaker,
+  `pulse_data_session_connect_output` for the video tiles, `pulse_setup_stage_1_*`
+  for the SDP offer). All of those run during normal setup, so the bind
+  has to be the very first thing we do on a freshly-created Pulse
+  handle. The demo therefore latches the decision at startup from the
+  `DOPPLER_SIP_BRIDGE` env var (default = on; set `DOPPLER_SIP_BRIDGE=0`
+  to fall back to Pulse-owned sockets) and surfaces the result as a
+  read-only checkbox + label in the UI. There is **no runtime toggle**.
 * **App-transport `.so` mismatch**: the channel-aware app-transport API
   (`PulseAppChannelId`, the 4-arg `PulseAppPacketCallback`, etc.) is what
   this demo's `app_transport.cpp` is written against — those headers

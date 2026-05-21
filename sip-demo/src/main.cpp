@@ -56,55 +56,52 @@ enum class CallStage {
 };
 
 // ---------------------------------------------------------------------------
-// STAGED BRING-UP: AppTransport bridge toggle
+// STAGED BRING-UP: AppTransport bridge (startup-time decision)
 // ---------------------------------------------------------------------------
-// The end-goal architecture is: Pulse hands its RTP/RTCP packets to the
+// The architecture is: Pulse hands its RTP/RTCP packets to the
 // `AppTransport` via the pulse_options_set_app_transport() callback API,
 // and we relay them over UDP sockets we own ourselves (one per m=/RTCP
 // wire). The same sockets receive the peer's RTP/RTCP and feed it back
 // into Pulse via pulse_app_transport_push().
 //
-// However, until we have a *known-good* Pulse <-> SIP call running end to
-// end with media flowing, the app-transport layer is just one more thing
-// that can be wrong. So this is wired as a runtime toggle (see the "Use
-// AppTransport bridge" checkbox in the UI) which defaults to OFF: Pulse
-// keeps ownership of the actual UDP sockets and the SDP it generates is
-// forwarded to PJSIP untouched. Tick the box before pressing "Call" to
-// engage the bridge instead.
+// IMPORTANT - this CANNOT be a runtime toggle. pulse_options_set_app_transport()
+// is rejected with PULSE_ERROR_ALREADY_CONNECTED the moment the client
+// enters the connected state, and Pulse enters that state implicitly the
+// first time we call ANY *_connect_* API (pulse_device_session_connect_*,
+// pulse_data_session_connect_output, pulse_setup_stage_1_*). All of those
+// run during normal setup, long before the user could press a UI button.
 //
-// One important nuance baked into the lifecycle: pulse_options_set_app_transport
-// is one-shot - the underlying Pulse client refuses the call once it has
-// connected. So the very first call that runs with the box ticked binds
-// the transport for the remainder of the session, and the checkbox is
-// disabled afterwards. There's no reasonable way to "unbridge" a Pulse
-// client mid-session today; if we need that later we'd have to recreate
-// the Pulse client.
+// So the bind happens unconditionally at startup, right after
+// pulse_new_external_rest(), before install_callbacks / window-handle
+// setters / connect_default_devices / init_video_render_ctx. We respect
+// an opt-out via `DOPPLER_SIP_BRIDGE=0` for A/B comparison with Pulse-
+// owned sockets, but flipping it requires restarting the binary.
 //
-// All AppTransport code (the class, the SDP rewrite, the per-bridge UI
-// table, the snapshot counters) is INTENTIONALLY LEFT IN PLACE - the
-// checkbox just decides whether we wire it up at call time.
+// The UI surfaces the latched state as a read-only checkbox + label so
+// the operator can see at a glance which transport mode this build is
+// using and whether the bind actually succeeded.
 
 struct AppState
 {
     Pulse *                  pulse     = nullptr;
     doppler::SipUA *         sip       = nullptr;
-    // Pointer is only populated once the user has ticked the bridge
-    // checkbox AND the first call has successfully bound the transport
-    // to Pulse. While it stays nullptr every `if (app.transport)` site
-    // below short-circuits, which is what we want during staged bring-up.
+    // Non-owning pointer to the AppTransport instance. Populated by main()
+    // immediately after `bind_to_pulse()` succeeds at startup, or left as
+    // nullptr if DOPPLER_SIP_BRIDGE=0 or the bind itself failed. Every
+    // `if (app.transport)` site below short-circuits in that case,
+    // routing the call through Pulse-owned sockets unmodified.
     doppler::AppTransport *  transport = nullptr;
 
-    // UI checkbox state. Read on the UI thread when the user presses
-    // "Call"; flipped from the same thread, so a plain bool would do,
-    // but atomic keeps it tidy if the call path ever moves threads.
+    // Bridge state, latched at startup. `bridge_enabled` reflects the
+    // DOPPLER_SIP_BRIDGE env var (default = true). `bridge_bound` is set
+    // iff pulse_options_set_app_transport() returned success. Neither
+    // value changes after startup; the UI checkbox is read-only.
+    // Atomics keep the UI-thread reads tidy against the startup writes.
     std::atomic<bool>        bridge_enabled{false};
-    // True once we've successfully called bind_to_pulse() on `pulse`.
-    // After that the binding is permanent for this app run (Pulse refuses
-    // a re-bind once connected), so the checkbox is rendered disabled.
     std::atomic<bool>        bridge_bound{false};
     // Storage for the AppTransport instance lives in main(); we keep a
-    // non-owning pointer here so start_call() can reach it to bind /
-    // configure when the user has ticked the checkbox.
+    // non-owning pointer here so call-handling code can reach it (e.g.
+    // configure_local_offer / configure_remote_answer).
     doppler::AppTransport *  transport_storage = nullptr;
 
     // The single input the demo needs: a SIP URI to call.
@@ -321,31 +318,15 @@ static void start_call(AppState & app)
 
     set_status(app, "Asking Pulse for a SIP-mode SDP offer...");
 
-    // ---- Conditionally engage the AppTransport bridge ------------------
-    // The user-facing checkbox decides whether this call routes its media
-    // through our UDP-bridge. We have to act on it BEFORE stage_1 because
-    // pulse_options_set_app_transport() is rejected once the Pulse client
-    // has connected (which stage_1 does). Once bound, the binding is
-    // permanent for the rest of this app run, so we only ever attempt
-    // bind_to_pulse() the first time the user calls with the box ticked.
-    if (app.bridge_enabled.load() && !app.bridge_bound.load() &&
-        app.transport_storage != nullptr)
-    {
-        PulseError xport_err = app.transport_storage->bind_to_pulse(app.pulse);
-        if (xport_err != PULSE_SUCCESS) {
-            set_status(app,
-                std::string("pulse_options_set_app_transport failed: ")
-                    + pulse_strerror(xport_err)
-                    + " - falling back to Pulse-owned sockets.");
-            // Leave app.transport == nullptr so the rest of the call runs
-            // in direct Pulse + PJSIP mode rather than aborting.
-        } else {
-            app.transport = app.transport_storage;
-            app.bridge_bound.store(true);
-        }
-    }
-
     // ---- Stage 1: get a local SDP offer from Pulse ---------------------
+    // Note: the AppTransport bridge (if enabled via DOPPLER_SIP_BRIDGE) was
+    // already bound to Pulse at startup, inside main(). It HAS to be — Pulse
+    // rejects pulse_options_set_app_transport() with ALREADY_CONNECTED once
+    // any *_connect_* API has run, which by this point includes device-session
+    // and data-session connects. So all we have to do here is read the result:
+    // app.transport is non-null iff the startup bind succeeded, in which case
+    // we'll rewrite the SDP below; otherwise Pulse drives its own UDP sockets
+    // directly and the SDP it hands us is what PJSIP puts on the wire.
     PulseSetupStage1Config cfg{};
     cfg.is_sip              = true;
     cfg.disable_trickle_ice = true;   // simpler exchange for direct SIP
@@ -367,8 +348,8 @@ static void start_call(AppState & app)
     // the UDP sockets the AppTransport owns, so the SIP peer sends RTP to
     // *us* and we relay it back into Pulse via pulse_app_transport_push().
     //
-    // Only runs when the runtime "Use AppTransport bridge" checkbox was
-    // ticked AND bind_to_pulse() succeeded above. Otherwise app.transport
+    // Only runs when the bridge was opted into (DOPPLER_SIP_BRIDGE != 0)
+    // AND bind_to_pulse() succeeded at startup. Otherwise app.transport
     // is nullptr and Pulse's SDP is forwarded to PJSIP unmodified, with
     // Pulse's own UDP sockets advertised in the INVITE.
     if (app.transport) {
@@ -551,25 +532,24 @@ static void draw_ui(AppState & app, GLTextureContext & remote_ctx,
     if (ImGui::Button("Hang up")) start_hangup(app);
     ImGui::EndDisabled();
 
-    // ---- AppTransport bridge toggle -----------------------------------
-    // Sits next to Call/Hang-up so the operator can pick a mode before
-    // pressing Call. Disabled while a call is in progress (the decision
-    // has already been latched for that call) and permanently disabled
-    // after the first call that bound the transport, since Pulse won't
-    // accept a second pulse_options_set_app_transport on the same client.
+    // ---- AppTransport bridge status (read-only) -----------------------
+    // The bridge decision is latched at startup from DOPPLER_SIP_BRIDGE
+    // because pulse_options_set_app_transport() must run before any
+    // *_connect_* API touches the Pulse handle. We expose the resulting
+    // state here as a non-interactive checkbox + label so the operator
+    // can see at a glance which transport mode this build is using.
     ImGui::SameLine();
-    bool bridge_enabled = app.bridge_enabled.load();
-    const bool bridge_locked = app.bridge_bound.load() || !can_call;
-    ImGui::BeginDisabled(bridge_locked);
-    if (ImGui::Checkbox("Use AppTransport bridge", &bridge_enabled))
-        app.bridge_enabled.store(bridge_enabled);
+    bool bridge_enabled_view = app.bridge_enabled.load();
+    ImGui::BeginDisabled(true);
+    ImGui::Checkbox("AppTransport bridge", &bridge_enabled_view);
     ImGui::EndDisabled();
+    ImGui::SameLine();
     if (app.bridge_bound.load()) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(bound for this session)");
-    } else if (!can_call) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(locked while call active)");
+        ImGui::TextDisabled("(bound at startup)");
+    } else if (bridge_enabled_view) {
+        ImGui::TextDisabled("(bind failed - see status)");
+    } else {
+        ImGui::TextDisabled("(disabled - DOPPLER_SIP_BRIDGE=0)");
     }
 
     ImGui::Separator();
@@ -631,22 +611,22 @@ static void draw_ui(AppState & app, GLTextureContext & remote_ctx,
     // every frame so the panel auto-resizes from one m= section up to
     // however many wires Pulse negotiated.
     //
-    // `app.transport` is nullptr until the user has ticked the bridge
-    // checkbox AND a call has successfully bound the transport - so this
-    // panel renders a clear "bridge disabled / not yet bound" notice
-    // instead of an empty table during staged bring-up. Once the bridge
-    // engages on a call, the table lights up automatically.
+    // `app.transport` is non-null iff the startup bind succeeded (see
+    // DOPPLER_SIP_BRIDGE). If the user opted out we render a one-line
+    // notice; if the bind failed we render a different one so the cause
+    // is obvious. Once a call sets up SDP, the snapshot table lights up.
     ImGui::Spacing();
     ImGui::Separator();
     if (!app.transport) {
         if (app.bridge_enabled.load())
             ImGui::TextDisabled(
-                "UDP bridges: AppTransport will engage on next call.");
+                "UDP bridges: AppTransport bind failed at startup - "
+                "Pulse owns sockets directly. See status text above.");
         else
             ImGui::TextDisabled(
-                "UDP bridges: AppTransport disabled (Pulse owns sockets "
-                "directly). Tick the checkbox above before calling to "
-                "engage the bridge.");
+                "UDP bridges: AppTransport disabled at startup "
+                "(DOPPLER_SIP_BRIDGE=0). Pulse owns sockets directly. "
+                "Restart without that env var to engage the bridge.");
     } else {
         std::vector<doppler::BridgeStat> stats = app.transport->snapshot();
         if (stats.empty()) {
@@ -748,6 +728,29 @@ int main()
     pulse_global_logger_callback(on_pulse_log, nullptr);
 
     AppState app;
+
+    // Latch the AppTransport bridge decision at startup. Pulse's
+    // pulse_options_set_app_transport() returns PULSE_ERROR_ALREADY_CONNECTED
+    // the moment the client enters the connected state, and that happens
+    // implicitly the first time we touch a `*_connect_*` API
+    // (pulse_device_session_connect_system_default, pulse_data_session_connect_output,
+    // pulse_setup_stage_1_*). So the bind has to be the *first* thing we do
+    // on a freshly-created Pulse handle - well before connect_default_devices,
+    // before init_video_render_ctx, and obviously before start_call. That
+    // means the bridge can't be a runtime UI toggle: by the time the user
+    // ticks a checkbox, Pulse is long since past the point of no return.
+    //
+    // We therefore latch the decision once, at startup, from the
+    // DOPPLER_SIP_BRIDGE env var. Default = on, because routing media
+    // through our app-owned UDP sockets is the whole point of this demo;
+    // set DOPPLER_SIP_BRIDGE=0 to fall back to Pulse-owned sockets for
+    // direct comparison.
+    bool bridge_wanted = true;
+    if (const char * env = std::getenv("DOPPLER_SIP_BRIDGE")) {
+        bridge_wanted = !(env[0] == '0' && env[1] == '\0');
+    }
+    app.bridge_enabled.store(bridge_wanted);
+
     // External-rest mode: PJSIP owns SIP signalling, Pulse is purely a
     // media engine. The update_sdp callback fires if Pulse later wants
     // to renegotiate (e.g. add a content stream); we register it against
@@ -760,6 +763,33 @@ int main()
         std::fprintf(stderr, "pulse_new_external_rest() returned NULL\n");
         return 1;
     }
+
+    // ---- Boot the application-owned RTP/RTCP transport (FIRST) -----------
+    // This must be the very first thing we do on the fresh Pulse handle,
+    // before install_callbacks, before any pulse_options_set_* call, and
+    // critically before connect_default_devices and init_video_render_ctx.
+    // pulse_options_set_app_transport() is rejected with
+    // PULSE_ERROR_ALREADY_CONNECTED once any *_connect_* API has put the
+    // client into the connected state, so there is no "bind later" path.
+    // If the user opted out via DOPPLER_SIP_BRIDGE=0 we skip the bind and
+    // leave app.transport == nullptr, which short-circuits every later
+    // `if (app.transport)` site and lets Pulse drive its own UDP sockets.
+    doppler::AppTransport transport;
+    app.transport_storage = &transport;
+    if (bridge_wanted) {
+        PulseError xport_err = transport.bind_to_pulse(app.pulse);
+        if (xport_err != PULSE_SUCCESS) {
+            std::fprintf(stderr,
+                "pulse_options_set_app_transport failed at startup: %s "
+                "- continuing with Pulse-owned sockets.\n",
+                pulse_strerror(xport_err));
+            app.bridge_enabled.store(false);
+        } else {
+            app.transport = &transport;
+            app.bridge_bound.store(true);
+        }
+    }
+
     install_callbacks(app);
 
     // We render the video ourselves below (see GLTextureContext) by pulling
@@ -771,20 +801,6 @@ int main()
     pulse_options_set_self_view_window_handle         (app.pulse, nullptr);
     pulse_options_set_remote_video_window_handle      (app.pulse, nullptr);
     pulse_options_set_presentation_video_window_handle(app.pulse, nullptr);
-
-    // ---- Boot the application-owned RTP/RTCP transport -------------------
-    // Construction is cheap (no sockets, no thread, no Pulse interaction)
-    // - we just want a long-lived instance whose lifetime brackets every
-    // call placed in this app run. The actual `bind_to_pulse()` call is
-    // deferred until the first start_call() that finds the "Use
-    // AppTransport bridge" checkbox ticked: until then Pulse owns its
-    // UDP sockets directly, which is the simplest Pulse <-> SIP wiring
-    // and what we want for staged bring-up. Once a single call has bound
-    // the transport, the binding is permanent (Pulse refuses to swap it
-    // out post-connect), so subsequent unticking of the checkbox can't
-    // undo it - the UI greys it out at that point.
-    doppler::AppTransport transport;
-    app.transport_storage = &transport;
 
     connect_default_devices(app);
 
