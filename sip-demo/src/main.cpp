@@ -35,6 +35,7 @@
 #include <GLFW/glfw3.h>
 
 #include <pexpulse/pulse.h>
+#include <pexpulse/pulse_data_session.h>
 
 #include "app_transport.h"
 #include "sip_ua.h"
@@ -416,11 +417,109 @@ static void start_hangup(AppState & app)
 }
 
 // ----------------------------------------------------------------------------
+//  Video rendering (Pulse data-session -> GL texture -> ImGui::Image)
+// ----------------------------------------------------------------------------
+//
+//  Lifted (with credit) from src/main.cpp's GLTextureContext pipeline,
+//  which is itself a slimmed-down copy of pexninja's render_gl_ctx_image.
+//
+//  We want a visible preview of what Pulse is producing once a SIP call
+//  goes through, both so the operator can verify that media really is
+//  flowing and so we have a fast feedback loop while debugging the
+//  Pulse/PJSIP/AppTransport plumbing. Same recipe as the REST demo:
+//
+//      1. Tell Pulse NOT to spawn its own native windows for self-view,
+//         far-end and presentation (set_*_window_handle(nullptr) BEFORE
+//         the first connect, otherwise Pulse will pop them up the moment
+//         media flows).
+//      2. Open a PulseDataSession output per content slot we want to
+//         render, asking for `video/x-raw, format=RGBA` so the frames
+//         are already in a format glTexImage2D understands.
+//      3. Every ImGui frame, pull the freshest decoded frame
+//         (timeout=0 - non-blocking; we'd rather skip a frame than
+//         stall the UI) and re-upload it into a GL texture.
+//      4. ImGui::Image draws the texture inside a tile.
+// ----------------------------------------------------------------------------
+
+struct GLTextureContext
+{
+    GLuint            texture       = 0;
+    PulseMediaContent media_content = PULSE_MEDIA_CONTENT_MAIN;
+    int               last_width    = 0;
+    int               last_height   = 0;
+};
+
+static PulseDataSessionConfig * make_video_data_session_config()
+{
+    PulseDataSessionConfig * cfg =
+        pulse_data_session_config_new(PULSE_DATA_SESSION_VIDEO_FROM_CAPS);
+    pulse_data_session_config_video_from_caps(cfg, "video/x-raw, format=RGBA");
+    return cfg;
+}
+
+static void init_video_render_ctx(Pulse * pulse, GLTextureContext & ctx,
+                                  PulseMediaContent media_content)
+{
+    glGenTextures(1, &ctx.texture);
+    glBindTexture(GL_TEXTURE_2D, ctx.texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    ctx.media_content = media_content;
+
+    PulseDataSessionConfig * cfg = make_video_data_session_config();
+    pulse_data_session_connect_output(pulse, cfg, media_content);
+    pulse_data_session_config_free(cfg);
+}
+
+static void shutdown_video_render_ctx(Pulse * pulse, GLTextureContext & ctx)
+{
+    pulse_data_session_disconnect(pulse, PULSE_MEDIA_VIDEO,
+                                  PULSE_MEDIA_OUTPUT, ctx.media_content);
+    if (ctx.texture) {
+        glDeleteTextures(1, &ctx.texture);
+        ctx.texture = 0;
+    }
+}
+
+// Try to pull a fresh RGBA frame and upload it to the GL texture. No-op if
+// nothing is ready yet (we poll with timeout=0 so we never block the UI).
+// If the resolution changes mid-call (re-INVITE, layout change, ...) the
+// next glTexImage2D will resize the texture automatically.
+static void pump_frame_into_texture(Pulse * pulse, GLTextureContext & ctx)
+{
+    PulseDataSessionFrameData * frame = nullptr;
+    pulse_data_session_pull_frame_data(pulse, PULSE_MEDIA_VIDEO, &frame,
+                                       ctx.media_content, 0);
+    if (!frame) return;
+
+    int w = 0, h = 0;
+    if (pulse_frame_data_get_resolution(frame, &w, &h) && w > 0 && h > 0) {
+        glBindTexture(GL_TEXTURE_2D, ctx.texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, frame->data);
+        ctx.last_width  = w;
+        ctx.last_height = h;
+    }
+    pulse_data_session_frame_data_free(frame);
+}
+
+// ----------------------------------------------------------------------------
 //  ImGui control panel
 // ----------------------------------------------------------------------------
 
-static void draw_ui(AppState & app)
+static void draw_ui(AppState & app, GLTextureContext & remote_ctx,
+                    GLTextureContext & selfview_ctx)
 {
+    // Pull the freshest frame from each Pulse output session BEFORE we
+    // start drawing - the upload itself is a GL state mutation, so we
+    // want it sandwiched between glfwMakeContextCurrent (already done
+    // by the GLFW backend before draw_ui) and ImGui::Image. The pull
+    // is non-blocking (timeout=0) and harmless if no session has
+    // produced a frame yet - the texture just keeps showing whatever
+    // it last had.
+    pump_frame_into_texture(app.pulse, remote_ctx);
+    pump_frame_into_texture(app.pulse, selfview_ctx);
+
     ImGuiViewport * vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
     ImGui::SetNextWindowSize(vp->WorkSize);
@@ -492,6 +591,40 @@ static void draw_ui(AppState & app)
     ImGui::TextWrapped("%s", status_text.c_str());
     if (!progress_text.empty())
         ImGui::TextWrapped("%s", progress_text.c_str());
+
+    // ---- Video tiles --------------------------------------------------
+    // Two side-by-side tiles in 16:9: "Remote" shows what Pulse decoded
+    // from the SIP peer's RTP (MAIN content slot - this is the whole
+    // point: "did we actually receive media?"), "Self-view" shows our
+    // local camera feed (SELFVIEW slot) as a sanity check that capture
+    // is working. Each tile draws an empty grey rectangle placeholder
+    // until its first frame arrives so the layout doesn't jump.
+    ImGui::Spacing();
+    ImGui::Separator();
+    {
+        const float avail  = ImGui::GetContentRegionAvail().x;
+        const float tile_w = (avail - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        const float tile_h = tile_w * 9.0f / 16.0f;
+
+        auto draw_tile = [&](const char * label, GLTextureContext & ctx) {
+            ImGui::BeginGroup();
+            ImGui::TextUnformatted(label);
+            if (ctx.texture && ctx.last_width > 0 && ctx.last_height > 0) {
+                ImGui::Image((ImTextureID)(uintptr_t)ctx.texture,
+                             ImVec2(tile_w, tile_h));
+            } else {
+                ImGui::Dummy(ImVec2(tile_w, tile_h));
+                ImGui::GetWindowDrawList()->AddRect(
+                    ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                    IM_COL32(80, 80, 80, 255));
+            }
+            ImGui::EndGroup();
+        };
+
+        draw_tile("Remote (what we are receiving)", remote_ctx);
+        ImGui::SameLine();
+        draw_tile("Self-view (local camera)",       selfview_ctx);
+    }
 
     // ---- Live per-bridge UDP counters ---------------------------------
     // One row per AppTransport channel (= one UDP socket), built fresh
@@ -594,7 +727,7 @@ int main()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
-    GLFWwindow * window = glfwCreateWindow(680, 520,
+    GLFWwindow * window = glfwCreateWindow(960, 720,
                                            "Doppler - Pulse + SIP demo",
                                            nullptr, nullptr);
     if (!window) {
@@ -629,6 +762,16 @@ int main()
     }
     install_callbacks(app);
 
+    // We render the video ourselves below (see GLTextureContext) by pulling
+    // RGBA frames out of Pulse via the data-session API. Tell Pulse NOT
+    // to also spawn its own native windows for self-view, the far end
+    // or presentation - these have to be cleared BEFORE the first
+    // connect (i.e. before stage_1), otherwise Pulse pops them up the
+    // moment media starts flowing. Mirrors src/main.cpp.
+    pulse_options_set_self_view_window_handle         (app.pulse, nullptr);
+    pulse_options_set_remote_video_window_handle      (app.pulse, nullptr);
+    pulse_options_set_presentation_video_window_handle(app.pulse, nullptr);
+
     // ---- Boot the application-owned RTP/RTCP transport -------------------
     // Construction is cheap (no sockets, no thread, no Pulse interaction)
     // - we just want a long-lived instance whose lifetime brackets every
@@ -645,6 +788,17 @@ int main()
 
     connect_default_devices(app);
 
+    // Open RGBA data-session outputs for the streams we want to render
+    // inline in the ImGui window: MAIN (incoming far-end video - this
+    // answers "are we actually receiving anything?") and SELFVIEW (our
+    // own camera feed - a quick capture sanity check). Pulse starts
+    // feeding frames in as soon as media exists; pump_frame_into_texture
+    // picks them up each ImGui frame from inside draw_ui().
+    GLTextureContext remote_ctx;
+    GLTextureContext selfview_ctx;
+    init_video_render_ctx(app.pulse, remote_ctx,   PULSE_MEDIA_CONTENT_MAIN);
+    init_video_render_ctx(app.pulse, selfview_ctx, PULSE_MEDIA_CONTENT_SELFVIEW);
+
     // ---- Boot PJSIP ------------------------------------------------------
     doppler::SipUA sip;
     std::string sip_err = sip.start("doppler-sip/0.1", /*local_port=*/0);
@@ -660,7 +814,7 @@ int main()
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        draw_ui(app);
+        draw_ui(app, remote_ctx, selfview_ctx);
         ImGui::Render();
         int display_w = 0, display_h = 0;
         glfwGetFramebufferSize(window, &display_w, &display_h);
@@ -675,6 +829,11 @@ int main()
     sip.stop();                     // sends BYE if needed
     if (pulse_is_connected(app.pulse))
         pulse_disconnect(app.pulse, nullptr);
+    // Disconnect the video data-sessions and delete the GL textures
+    // before we tear Pulse down. The GL context is still current here
+    // (glfwDestroyWindow happens later), so glDeleteTextures is safe.
+    shutdown_video_render_ctx(app.pulse, remote_ctx);
+    shutdown_video_render_ctx(app.pulse, selfview_ctx);
     // Stop the reader thread, close sockets, clear the app-transport
     // binding - all before pulse_free() so Pulse never sees a dangling
     // callback while it's tearing the media engine down. Safe (no-op)

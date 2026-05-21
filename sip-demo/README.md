@@ -92,7 +92,11 @@ Type a SIP URI (`alice@example.com` or `sip:alice@example.com`) and press
 arrives the answer SDP is handed back to Pulse via
 `pulse_setup_stage_2_from_structure()`. From that point on media flows
 through Pulse exactly as in the REST demo — same camera/mic/speaker
-bindings, same auto-spawned video windows.
+bindings. The two video tiles in the UI ("Remote" and "Self-view") are
+fed from Pulse's data-session API (`video/x-raw, format=RGBA`) and
+uploaded into GL textures each frame, so you can see what we are
+actually receiving without Pulse spawning its own native windows
+(which are suppressed via `pulse_options_set_*_window_handle(nullptr)`).
 
 **Hang up** sends a SIP `BYE` and tears the Pulse session down.
 
