@@ -778,20 +778,42 @@ static void draw_ui(AppState & app, GLTextureContext & remote_ctx,
                 "placed - Pulse owns sockets directly.");
     } else {
         std::vector<doppler::BridgeStat> stats = app.transport->snapshot();
+        doppler::TransportTotals tot          = app.transport->totals();
         if (stats.empty()) {
             ImGui::TextDisabled("UDP bridges: none yet (no SDP offered).");
         } else {
             ImGui::Text("UDP bridges (%zu):", stats.size());
+            // Bridge-wide callback fan-in / unattributed-drop totals.
+            // Surfaces the "Pulse is feeding us callbacks but nothing
+            // makes it to a socket" case: if cb_total grows but the per
+            // -channel TX columns stay at zero, the answer is in the
+            // 'Callbacks / Drops' column on the row that should have
+            // gotten the packet (or in cb_no_channel if Pulse is using
+            // a channel id we never registered).
+            ImGui::Text("Callback totals: total=%llu  no-channel=%llu  "
+                        "null-data=%llu  after-unbind=%llu",
+                        static_cast<unsigned long long>(tot.cb_total),
+                        static_cast<unsigned long long>(tot.cb_no_channel),
+                        static_cast<unsigned long long>(tot.cb_null_data),
+                        static_cast<unsigned long long>(tot.cb_unbound));
+            // Legend for the Callbacks/Drops column further down. Kept
+            // inline (rather than as a tooltip on the header) because
+            // ImGui table headers don't expose a reliable per-column
+            // hover state in the version we link against.
+            ImGui::TextDisabled(
+                "Drops legend: nr=no-remote  bf=bad-fd  z=zero-size  "
+                "se=send-err  errno=last sendto() errno");
             const ImGuiTableFlags flags = ImGuiTableFlags_Borders
                                         | ImGuiTableFlags_RowBg
                                         | ImGuiTableFlags_SizingStretchProp;
-            if (ImGui::BeginTable("udp_bridges", 7, flags)) {
+            if (ImGui::BeginTable("udp_bridges", 8, flags)) {
                 ImGui::TableSetupColumn("Media");
                 ImGui::TableSetupColumn("Kind");
                 ImGui::TableSetupColumn("Local");
                 ImGui::TableSetupColumn("Remote");
                 ImGui::TableSetupColumn("TX (pkts / bytes)");
                 ImGui::TableSetupColumn("RX (pkts / bytes)");
+                ImGui::TableSetupColumn("Callbacks / Drops");
                 ImGui::TableSetupColumn("Direction");
                 ImGui::TableHeadersRow();
 
@@ -809,6 +831,34 @@ static void draw_ui(AppState & app, GLTextureContext & remote_ctx,
                     ImGui::Text("%llu / %llu",
                                 static_cast<unsigned long long>(s.rx_packets),
                                 static_cast<unsigned long long>(s.rx_bytes));
+                    ImGui::TableNextColumn();
+                    // "cb=N | drops: no-remote/bad-fd/zero/send-err
+                    //  [errno=E]" - compact but tells you at a glance
+                    // which bucket is absorbing the callbacks.
+                    uint64_t drops_total = s.tx_drops_no_remote
+                                         + s.tx_drops_bad_fd
+                                         + s.tx_drops_zero_size
+                                         + s.tx_drops_send_err;
+                    if (s.last_send_errno != 0) {
+                        ImGui::Text("cb=%llu drops=%llu (nr=%llu/bf=%llu/"
+                                    "z=%llu/se=%llu, errno=%d)",
+                                    static_cast<unsigned long long>(s.cb_packets),
+                                    static_cast<unsigned long long>(drops_total),
+                                    static_cast<unsigned long long>(s.tx_drops_no_remote),
+                                    static_cast<unsigned long long>(s.tx_drops_bad_fd),
+                                    static_cast<unsigned long long>(s.tx_drops_zero_size),
+                                    static_cast<unsigned long long>(s.tx_drops_send_err),
+                                    s.last_send_errno);
+                    } else {
+                        ImGui::Text("cb=%llu drops=%llu (nr=%llu/bf=%llu/"
+                                    "z=%llu/se=%llu)",
+                                    static_cast<unsigned long long>(s.cb_packets),
+                                    static_cast<unsigned long long>(drops_total),
+                                    static_cast<unsigned long long>(s.tx_drops_no_remote),
+                                    static_cast<unsigned long long>(s.tx_drops_bad_fd),
+                                    static_cast<unsigned long long>(s.tx_drops_zero_size),
+                                    static_cast<unsigned long long>(s.tx_drops_send_err));
+                    }
                     ImGui::TableNextColumn();
                     // Directional indicator: arrows light up as soon as the
                     // first packet flows in each direction, so at a glance

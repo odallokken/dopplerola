@@ -62,6 +62,29 @@ struct BridgeStat {
     uint64_t     tx_bytes   = 0;
     uint64_t     rx_packets = 0;
     uint64_t     rx_bytes   = 0;
+
+    // Outbound drop-bucket diagnostics. `cb_packets` is the number of
+    // PulseAppPacketCallback invocations the bridge matched to this
+    // channel; `tx_packets` is how many of those actually made it onto
+    // the wire via sendto(). The difference is broken down below so the
+    // UI can show *why* packets were dropped when papa is producing but
+    // nothing leaves the socket.
+    uint64_t     cb_packets             = 0; // matched callbacks for this channel
+    uint64_t     tx_drops_no_remote     = 0; // configure_remote_answer() hadn't run yet
+    uint64_t     tx_drops_bad_fd        = 0; // socket was already closed
+    uint64_t     tx_drops_zero_size     = 0; // Pulse handed us an empty buffer
+    uint64_t     tx_drops_send_err      = 0; // sendto() returned < 0
+    int          last_send_errno        = 0; // errno from the most recent failed sendto()
+};
+
+// Bridge-wide ("global") counters that aren't attributable to any single
+// channel. Returned by AppTransport::totals(). All counters are monotonic
+// from the moment bind_to_pulse() was called.
+struct TransportTotals {
+    uint64_t cb_total           = 0; // every on_outbound() invocation
+    uint64_t cb_no_channel      = 0; // callback for a channel id we don't know
+    uint64_t cb_null_data       = 0; // callback with NULL/zero-size buffer
+    uint64_t cb_unbound         = 0; // callback fired after we cleared client
 };
 
 class AppTransport {
@@ -113,6 +136,10 @@ public:
     // RTP before RTCP within a split section). Safe to call from any
     // thread. Returned vector is freshly allocated.
     std::vector<BridgeStat> snapshot() const;
+
+    // Bridge-wide diagnostic counters (callback fan-in totals + the
+    // "unattributable" drop buckets). Safe to call from any thread.
+    TransportTotals totals() const;
 
     // Tear sockets down and unbind from Pulse. Safe to call any number of
     // times. Called automatically by the destructor.

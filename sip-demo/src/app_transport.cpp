@@ -265,6 +265,18 @@ struct Channel {
     std::atomic<uint64_t> rx_packets{0};
     std::atomic<uint64_t> rx_bytes{0};
 
+    // Outbound drop diagnostics. `cb_calls` counts every callback from
+    // Pulse the bridge matched to this channel; the four `tx_drops_*`
+    // buckets explain the gap between `cb_calls` and `tx_packets`.
+    // `last_send_errno` snapshots errno from the most recent failed
+    // sendto() so the UI can show *why* the kernel refused the packet.
+    std::atomic<uint64_t> cb_calls         {0};
+    std::atomic<uint64_t> tx_drops_no_remote{0};
+    std::atomic<uint64_t> tx_drops_bad_fd  {0};
+    std::atomic<uint64_t> tx_drops_zero_size{0};
+    std::atomic<uint64_t> tx_drops_send_err{0};
+    std::atomic<int>      last_send_errno  {0};
+
     // Channels live in a std::vector that's append-only after
     // configure_local_offer; allow it to grow by giving Channel a
     // move-constructor that copies the atomics' current values.
@@ -277,7 +289,13 @@ struct Channel {
         tx_packets(o.tx_packets.load(std::memory_order_relaxed)),
         tx_bytes  (o.tx_bytes  .load(std::memory_order_relaxed)),
         rx_packets(o.rx_packets.load(std::memory_order_relaxed)),
-        rx_bytes  (o.rx_bytes  .load(std::memory_order_relaxed)) {}
+        rx_bytes  (o.rx_bytes  .load(std::memory_order_relaxed)),
+        cb_calls         (o.cb_calls         .load(std::memory_order_relaxed)),
+        tx_drops_no_remote(o.tx_drops_no_remote.load(std::memory_order_relaxed)),
+        tx_drops_bad_fd  (o.tx_drops_bad_fd  .load(std::memory_order_relaxed)),
+        tx_drops_zero_size(o.tx_drops_zero_size.load(std::memory_order_relaxed)),
+        tx_drops_send_err(o.tx_drops_send_err.load(std::memory_order_relaxed)),
+        last_send_errno  (o.last_send_errno  .load(std::memory_order_relaxed)) {}
     Channel & operator=(Channel && o) noexcept {
         id = o.id; fd = o.fd; local_port = o.local_port;
         remote = o.remote; remote_set = o.remote_set;
@@ -285,6 +303,12 @@ struct Channel {
         tx_bytes  .store(o.tx_bytes  .load(std::memory_order_relaxed), std::memory_order_relaxed);
         rx_packets.store(o.rx_packets.load(std::memory_order_relaxed), std::memory_order_relaxed);
         rx_bytes  .store(o.rx_bytes  .load(std::memory_order_relaxed), std::memory_order_relaxed);
+        cb_calls         .store(o.cb_calls         .load(std::memory_order_relaxed), std::memory_order_relaxed);
+        tx_drops_no_remote.store(o.tx_drops_no_remote.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        tx_drops_bad_fd  .store(o.tx_drops_bad_fd  .load(std::memory_order_relaxed), std::memory_order_relaxed);
+        tx_drops_zero_size.store(o.tx_drops_zero_size.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        tx_drops_send_err.store(o.tx_drops_send_err.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        last_send_errno  .store(o.last_send_errno  .load(std::memory_order_relaxed), std::memory_order_relaxed);
         return *this;
     }
 };
@@ -293,6 +317,56 @@ static bool channel_id_equal(const PulseAppChannelId & a,
                              const PulseAppChannelId & b)
 {
     return a.content == b.content && a.type == b.type && a.kind == b.kind;
+}
+
+// Stringify a PulseAppChannelId for logs: "{content,type,kind}". Kept
+// short on purpose - these go in stderr lines that the user reads while
+// the call is live, alongside Pulse's own one-line debug spam.
+static const char * content_str(PulseMediaContent c)
+{
+    switch (c) {
+        case PULSE_MEDIA_CONTENT_MAIN:         return "MAIN";
+        case PULSE_MEDIA_CONTENT_PRESENTATION: return "PRES";
+    }
+    return "?";
+}
+static const char * type_str(PulseMediaType t)
+{
+    switch (t) {
+        case PULSE_MEDIA_AUDIO: return "audio";
+        case PULSE_MEDIA_VIDEO: return "video";
+    }
+    return "?";
+}
+static const char * kind_str(PulseAppChannelKind k)
+{
+    switch (k) {
+        case PULSE_APP_CHANNEL_KIND_MUX:  return "MUX";
+        case PULSE_APP_CHANNEL_KIND_RTP:  return "RTP";
+        case PULSE_APP_CHANNEL_KIND_RTCP: return "RTCP";
+    }
+    return "?";
+}
+static std::string channel_id_str(const PulseAppChannelId & id)
+{
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "{%s,%s,%s}",
+                  content_str(id.content), type_str(id.type), kind_str(id.kind));
+    return buf;
+}
+
+// Rate-limit gate for per-packet log lines: print the first 8 occurrences
+// of an event (so the cause is obvious at call setup) and thereafter only
+// at exponentially growing intervals (every 8th, 16th, 32nd, ...). The
+// caller passes the *new* count after fetch_add+1.
+//
+// `(n & (n - 1)) == 0` is the standard "n is a power of two" trick: only
+// 0b1, 0b10, 0b100, ... clear all bits when ANDed with their predecessor,
+// so this fires at n = 16, 32, 64, ... (the n <= 8 short-circuit handles
+// the small powers that also satisfy the test).
+static bool should_log(uint64_t n)
+{
+    return n <= 8 || (n & (n - 1)) == 0;
 }
 
 // Pick the local IPv4 address to advertise in the rewritten SDP.
@@ -430,6 +504,14 @@ struct AppTransport::Impl {
 
     mutable std::mutex   remote_mtx;     // guards channels[*].remote{,_set}
 
+    // Bridge-wide ("global") diagnostic counters. These are incremented
+    // from Pulse's worker thread inside on_outbound() / send_packet() and
+    // sampled from the UI thread via AppTransport::totals().
+    std::atomic<uint64_t> cb_total       {0};
+    std::atomic<uint64_t> cb_no_channel  {0};
+    std::atomic<uint64_t> cb_null_data   {0};
+    std::atomic<uint64_t> cb_unbound     {0};
+
     // ----- callback plumbing ------------------------------------------------
 
     static void on_outbound(void * user_context,
@@ -438,6 +520,38 @@ struct AppTransport::Impl {
                             int size)
     {
         auto * self = static_cast<Impl *>(user_context);
+        if (!self) {
+            // No way to attribute this; just leak a single stderr line.
+            std::fprintf(stderr,
+                "[app-transport] on_outbound: NULL user_context (size=%d) "
+                "- packet dropped\n", size);
+            return;
+        }
+        uint64_t total = self->cb_total.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (!self->client) {
+            uint64_t n = self->cb_unbound.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (should_log(n)) {
+                std::fprintf(stderr,
+                    "[app-transport] on_outbound %s after unbind "
+                    "(size=%d, cb_total=%llu, cb_unbound=%llu) - dropped\n",
+                    channel_id_str(channel_id).c_str(), size,
+                    static_cast<unsigned long long>(total),
+                    static_cast<unsigned long long>(n));
+            }
+            return;
+        }
+        if (data == nullptr || size <= 0) {
+            uint64_t n = self->cb_null_data.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (should_log(n)) {
+                std::fprintf(stderr,
+                    "[app-transport] on_outbound %s NULL/empty buffer "
+                    "(data=%p, size=%d, cb_null=%llu) - dropped\n",
+                    channel_id_str(channel_id).c_str(),
+                    static_cast<const void *>(data), size,
+                    static_cast<unsigned long long>(n));
+            }
+            return;
+        }
         self->send_packet(channel_id, data, size);
     }
 
@@ -448,34 +562,132 @@ struct AppTransport::Impl {
     }
 
     // Outbound: lookup the channel, sendto() its remote endpoint.
+    //
+    // Every drop path increments a per-channel atomic counter and emits
+    // a rate-limited stderr line; the totals are surfaced through the
+    // BridgeStat snapshot so the UI shows *why* packets are not making
+    // it onto the wire even though Pulse keeps feeding us callbacks.
     void send_packet(const PulseAppChannelId & id, const uint8_t * data, int size)
     {
         sockaddr_in remote{};
         int fd = -1;
         Channel * chan = nullptr;
+        bool found      = false;
+        bool no_remote  = false;
+        bool bad_fd     = false;
         {
             std::lock_guard<std::mutex> lock(remote_mtx);
             for (auto & c : channels) {
                 if (channel_id_equal(c.id, id)) {
-                    if (!c.remote_set || c.fd < 0) return;
+                    found = true;
+                    chan  = &c;
+                    if (!c.remote_set) { no_remote = true; break; }
+                    if (c.fd < 0)      { bad_fd    = true; break; }
                     remote = c.remote;
                     fd     = c.fd;
-                    chan   = &c;
                     break;
                 }
             }
         }
-        if (fd < 0) return;
+
+        if (!found) {
+            // Pulse handed us a channel id we never registered. This is
+            // the "channel-id mismatch" scenario - log the id verbatim
+            // so we can see exactly what Pulse is asking for.
+            uint64_t n = cb_no_channel.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (should_log(n)) {
+                std::fprintf(stderr,
+                    "[app-transport] send_packet %s NO MATCHING CHANNEL "
+                    "(size=%d, cb_no_channel=%llu) - dropped\n",
+                    channel_id_str(id).c_str(), size,
+                    static_cast<unsigned long long>(n));
+            }
+            return;
+        }
+
+        // Matched a channel - count the callback against it regardless
+        // of whether it eventually reaches the wire.
+        uint64_t cb_n = chan->cb_calls.fetch_add(1, std::memory_order_relaxed) + 1;
+
+        if (no_remote) {
+            uint64_t n = chan->tx_drops_no_remote
+                .fetch_add(1, std::memory_order_relaxed) + 1;
+            if (should_log(n)) {
+                std::fprintf(stderr,
+                    "[app-transport] send_packet %s remote not yet set "
+                    "(size=%d, cb=%llu, drops_no_remote=%llu) - dropped\n",
+                    channel_id_str(id).c_str(), size,
+                    static_cast<unsigned long long>(cb_n),
+                    static_cast<unsigned long long>(n));
+            }
+            return;
+        }
+        if (bad_fd) {
+            uint64_t n = chan->tx_drops_bad_fd
+                .fetch_add(1, std::memory_order_relaxed) + 1;
+            if (should_log(n)) {
+                std::fprintf(stderr,
+                    "[app-transport] send_packet %s socket closed "
+                    "(size=%d, cb=%llu, drops_bad_fd=%llu) - dropped\n",
+                    channel_id_str(id).c_str(), size,
+                    static_cast<unsigned long long>(cb_n),
+                    static_cast<unsigned long long>(n));
+            }
+            return;
+        }
+        if (size <= 0) {
+            uint64_t n = chan->tx_drops_zero_size
+                .fetch_add(1, std::memory_order_relaxed) + 1;
+            if (should_log(n)) {
+                std::fprintf(stderr,
+                    "[app-transport] send_packet %s zero-size buffer "
+                    "(cb=%llu, drops_zero=%llu) - dropped\n",
+                    channel_id_str(id).c_str(),
+                    static_cast<unsigned long long>(cb_n),
+                    static_cast<unsigned long long>(n));
+            }
+            return;
+        }
+
         // Best-effort send; the API doc explicitly says outbound packets
         // that can't be sent are dropped.
         ssize_t sent = ::sendto(fd, data, static_cast<size_t>(size), 0,
                                 reinterpret_cast<sockaddr *>(&remote), sizeof(remote));
-        if (sent > 0 && chan) {
-            // Safe: `channels` is append-only after configure_local_offer,
-            // so the pointer stays valid until shutdown joins us.
-            chan->tx_packets.fetch_add(1, std::memory_order_relaxed);
-            chan->tx_bytes.fetch_add(static_cast<uint64_t>(sent),
-                                     std::memory_order_relaxed);
+        if (sent < 0) {
+            int saved = errno;
+            chan->last_send_errno.store(saved, std::memory_order_relaxed);
+            uint64_t n = chan->tx_drops_send_err
+                .fetch_add(1, std::memory_order_relaxed) + 1;
+            if (should_log(n)) {
+                char ipbuf[INET_ADDRSTRLEN] = {0};
+                ::inet_ntop(AF_INET, &remote.sin_addr, ipbuf, sizeof(ipbuf));
+                std::fprintf(stderr,
+                    "[app-transport] send_packet %s sendto() failed: "
+                    "errno=%d (%s) fd=%d dst=%s:%u size=%d "
+                    "(cb=%llu, drops_send_err=%llu) - dropped\n",
+                    channel_id_str(id).c_str(),
+                    saved, std::strerror(saved), fd,
+                    ipbuf, ntohs(remote.sin_port), size,
+                    static_cast<unsigned long long>(cb_n),
+                    static_cast<unsigned long long>(n));
+            }
+            return;
+        }
+
+        // Success. Log the first packet per channel so we can confirm
+        // outbound has started flowing without spamming for every one.
+        uint64_t tx_n = chan->tx_packets.fetch_add(1, std::memory_order_relaxed) + 1;
+        chan->tx_bytes.fetch_add(static_cast<uint64_t>(sent),
+                                 std::memory_order_relaxed);
+        if (tx_n == 1) {
+            char ipbuf[INET_ADDRSTRLEN] = {0};
+            ::inet_ntop(AF_INET, &remote.sin_addr, ipbuf, sizeof(ipbuf));
+            std::fprintf(stderr,
+                "[app-transport] send_packet %s first packet on the wire "
+                "(fd=%d dst=%s:%u size=%d cb=%llu)\n",
+                channel_id_str(id).c_str(), fd,
+                ipbuf, ntohs(remote.sin_port), size,
+                static_cast<unsigned long long>(cb_n));
         }
     }
 
@@ -842,9 +1054,26 @@ std::vector<BridgeStat> AppTransport::snapshot() const
         s.tx_bytes   = c.tx_bytes  .load(std::memory_order_relaxed);
         s.rx_packets = c.rx_packets.load(std::memory_order_relaxed);
         s.rx_bytes   = c.rx_bytes  .load(std::memory_order_relaxed);
+        s.cb_packets         = c.cb_calls         .load(std::memory_order_relaxed);
+        s.tx_drops_no_remote = c.tx_drops_no_remote.load(std::memory_order_relaxed);
+        s.tx_drops_bad_fd    = c.tx_drops_bad_fd  .load(std::memory_order_relaxed);
+        s.tx_drops_zero_size = c.tx_drops_zero_size.load(std::memory_order_relaxed);
+        s.tx_drops_send_err  = c.tx_drops_send_err.load(std::memory_order_relaxed);
+        s.last_send_errno    = c.last_send_errno  .load(std::memory_order_relaxed);
         out.push_back(std::move(s));
     }
     return out;
+}
+
+TransportTotals AppTransport::totals() const
+{
+    TransportTotals t;
+    if (!impl_) return t;
+    t.cb_total      = impl_->cb_total     .load(std::memory_order_relaxed);
+    t.cb_no_channel = impl_->cb_no_channel.load(std::memory_order_relaxed);
+    t.cb_null_data  = impl_->cb_null_data .load(std::memory_order_relaxed);
+    t.cb_unbound    = impl_->cb_unbound   .load(std::memory_order_relaxed);
+    return t;
 }
 
 } // namespace doppler
