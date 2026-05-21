@@ -593,9 +593,26 @@ struct AppTransport::Impl {
         if (!found) {
             // Pulse handed us a channel id we never registered. This is
             // the "channel-id mismatch" scenario - log the id verbatim
-            // so we can see exactly what Pulse is asking for.
+            // so we can see exactly what Pulse is asking for. On the
+            // *first* occurrence we also dump every channel id we DID
+            // register so the operator can spot the kind/content/type
+            // mismatch in one go (e.g. Pulse sending {MAIN,audio,MUX}
+            // while we registered {MAIN,audio,RTP}+{MAIN,audio,RTCP}).
             uint64_t n = cb_no_channel.fetch_add(1, std::memory_order_relaxed) + 1;
-            if (should_log(n)) {
+            if (n == 1) {
+                std::fprintf(stderr,
+                    "[app-transport] send_packet %s NO MATCHING CHANNEL "
+                    "(size=%d) - dropped. Registered channels are:\n",
+                    channel_id_str(id).c_str(), size);
+                // Re-take the lock just for the dump; cheap, only happens
+                // once per Pulse session.
+                std::lock_guard<std::mutex> lock(remote_mtx);
+                for (const auto & c : channels) {
+                    std::fprintf(stderr,
+                        "[app-transport]   registered: %s fd=%d port=%u\n",
+                        channel_id_str(c.id).c_str(), c.fd, c.local_port);
+                }
+            } else if (should_log(n)) {
                 std::fprintf(stderr,
                     "[app-transport] send_packet %s NO MATCHING CHANNEL "
                     "(size=%d, cb_no_channel=%llu) - dropped\n",
@@ -945,6 +962,19 @@ std::string AppTransport::configure_local_offer(const std::string & pulse_offer_
     // the reader here is correct.
     impl_->reader_stop.store(false, std::memory_order_release);
     impl_->reader = std::thread([this] { impl_->reader_loop(); });
+
+    // Dump the final registered channel id list. This is the canonical
+    // "what we told Pulse to call us with" reference - any on_outbound
+    // callback whose channel id isn't in this list will be dropped and
+    // logged as cb_no_channel (see send_packet()).
+    std::fprintf(stderr,
+        "[app-transport] configure_local_offer: registered %zu channel(s):\n",
+        impl_->channels.size());
+    for (const auto & c : impl_->channels) {
+        std::fprintf(stderr,
+            "[app-transport]   channel: %s fd=%d port=%u\n",
+            channel_id_str(c.id).c_str(), c.fd, c.local_port);
+    }
 
     return join_sdp(sl);
 }

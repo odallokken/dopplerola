@@ -783,19 +783,67 @@ static void draw_ui(AppState & app, GLTextureContext & remote_ctx,
             ImGui::TextDisabled("UDP bridges: none yet (no SDP offered).");
         } else {
             ImGui::Text("UDP bridges (%zu):", stats.size());
-            // Bridge-wide callback fan-in / unattributed-drop totals.
-            // Surfaces the "Pulse is feeding us callbacks but nothing
-            // makes it to a socket" case: if cb_total grows but the per
-            // -channel TX columns stay at zero, the answer is in the
-            // 'Callbacks / Drops' column on the row that should have
-            // gotten the packet (or in cb_no_channel if Pulse is using
-            // a channel id we never registered).
-            ImGui::Text("Callback totals: total=%llu  no-channel=%llu  "
-                        "null-data=%llu  after-unbind=%llu",
-                        static_cast<unsigned long long>(tot.cb_total),
-                        static_cast<unsigned long long>(tot.cb_no_channel),
-                        static_cast<unsigned long long>(tot.cb_null_data),
+            // -------------------------------------------------------------
+            // Papa -> socket routing-health banner.
+            //
+            // The whole point of this panel: a fat, colour-coded summary
+            // of whether Pulse's outbound packets are even reaching a
+            // channel we know how to route. This is the case the user
+            // is hunting -- "packets coming out of papa but not making
+            // it into the socket". We render it as its own box (not just
+            // a `Text`) so the operator notices it at a glance even when
+            // the rest of the bridges table looks healthy.
+            //
+            // Three buckets matter:
+            //   * cb_no_channel  - Pulse emitted a channel id we never
+            //                      registered (e.g. it sends MUX while
+            //                      we registered split RTP/RTCP, or vice
+            //                      versa). The packet is dropped before
+            //                      any per-row counter can possibly tick.
+            //   * cb_null_data   - defensive: NULL/empty buffer from Pulse.
+            //   * cb_unbound     - callback after we cleared the binding.
+            // If any of them is non-zero we colour the box red; otherwise
+            // green ("all callbacks routed to a channel").
+            uint64_t cb_lost = tot.cb_no_channel + tot.cb_null_data
+                             + tot.cb_unbound;
+            const ImVec4 red   (0.85f, 0.30f, 0.30f, 1.0f);
+            const ImVec4 green (0.30f, 0.75f, 0.30f, 1.0f);
+            ImGui::PushStyleColor(ImGuiCol_Border,
+                                  cb_lost > 0 ? red : green);
+            ImGui::BeginChild("papa_to_socket_box",
+                              ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 4.5f),
+                              true);
+            ImGui::TextColored(cb_lost > 0 ? red : green,
+                "Papa -> socket routing: %s",
+                cb_lost > 0
+                    ? "PACKETS LOST BEFORE sendto() - see counters below"
+                    : "OK - every callback routed to a channel");
+            ImGui::Text("  on_outbound() callbacks total : %llu",
+                        static_cast<unsigned long long>(tot.cb_total));
+            ImGui::Text("  -> dropped, no matching channel id : %llu",
+                        static_cast<unsigned long long>(tot.cb_no_channel));
+            ImGui::Text("  -> dropped, NULL/empty buffer      : %llu",
+                        static_cast<unsigned long long>(tot.cb_null_data));
+            ImGui::Text("  -> dropped, callback after unbind  : %llu",
                         static_cast<unsigned long long>(tot.cb_unbound));
+            if (tot.cb_no_channel > 0) {
+                // The most common reason for cb_no_channel ticking up is
+                // a kind mismatch: Pulse hands us {content,type,MUX} but
+                // we registered {content,type,RTP}+{content,type,RTCP},
+                // or vice versa. Spell that out so the user doesn't have
+                // to dig through stderr to figure it out.
+                ImGui::TextColored(red,
+                    "  Hint: id mismatch (e.g. Pulse sends MUX while we "
+                    "registered split RTP/RTCP). See stderr for the "
+                    "actual {content,type,kind} Pulse is using.");
+            }
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+
+            // Per-channel breakdown follows. The drops in this table are
+            // ONLY the ones we could attribute to a specific channel
+            // (i.e. the lookup matched); the unattributable ones are in
+            // the banner above.
             // Legend for the Callbacks/Drops column further down. Kept
             // inline (rather than as a tooltip on the header) because
             // ImGui table headers don't expose a reliable per-column
