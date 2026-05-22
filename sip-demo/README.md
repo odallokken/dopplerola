@@ -142,10 +142,10 @@ actually receiving without Pulse spawning its own native windows
   compatibility fallback for this case (classify mux packet as RTP vs RTCP
   and route to the corresponding split channel) so audio can flow while the
   Pulse `.so` side is aligned.
-* **Summary to share with Pulse developers**
+* **Summary to Share with Pulse Developers**
   - **Repro**: start `sip-demo` with app-transport enabled and place a SIP
-    call where audio/video are negotiated; bridge registers split audio
-    channels (`RTP` + `RTCP`) for `MAIN/audio`.
+    call where both audio and video media are successfully negotiated; bridge
+    registers split audio channels (`RTP` + `RTCP`) for `MAIN/audio`.
   - **Observed**: outbound callback ids intermittently arrive as
     `{MAIN,audio,MUX}` instead of split `{MAIN,audio,RTP|RTCP}`. Logs show
     `send_packet {MAIN,audio,MUX} NO MATCHING CHANNEL`, and outbound audio
