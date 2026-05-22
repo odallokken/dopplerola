@@ -130,6 +130,14 @@ struct AppState
     std::atomic<int>  last_async_error{PULSE_SUCCESS};
     std::atomic<int>  stage{static_cast<int>(CallStage::Idle)};
 
+    // Set whenever something (the UI Hang-up button, or a SIP-side end /
+    // failure callback) wants Pulse fully torn down - i.e. pulse_free()'d,
+    // not just pulse_disconnect()'d. The main loop drains this flag every
+    // frame and runs destroy_pulse_now() on the UI thread, which is the
+    // only thread where the GL context is current and so the only place
+    // it's safe to release the Pulse-owned video data sessions.
+    std::atomic<bool> destroy_pulse_pending{false};
+
     std::mutex   text_mutex;
     std::string  status_text = "Idle. Enter a SIP URI and press Call.";
     std::string  progress_text;
@@ -299,14 +307,12 @@ static void on_sip_failure(AppState & app, const std::string & reason)
 {
     set_status(app, std::string("SIP call failed: ") + reason);
     set_progress(app, "");
-    // Pulse is in the middle of stage-1; tear it down so we can try again.
-    // We're on PJSIP's worker thread here, so use the async variant - a
-    // synchronous pulse_disconnect() would block the SIP event loop until
-    // Pulse's teardown is done.
-    if (app.pulse && pulse_is_connected(app.pulse)) {
-        PulseAsyncOperationResultCallbackConfig result_cb{ on_async_result, &app };
-        pulse_disconnect_async(app.pulse, &result_cb, nullptr);
-    }
+    // Pulse is in the middle of stage-1; ask the UI thread to tear it
+    // fully down (pulse_free + drop transport + uninstall callbacks) so
+    // the next Call starts from a clean slate. We can't do it here -
+    // this fires on PJSIP's worker thread and the GL context is owned
+    // by the UI thread.
+    app.destroy_pulse_pending.store(true);
     app.stage.store(static_cast<int>(CallStage::Idle));
 }
 
@@ -314,11 +320,10 @@ static void on_sip_ended(AppState & app, const std::string & reason)
 {
     set_status(app, std::string("SIP call ended: ") + reason);
     set_progress(app, "");
-    // Walk Pulse back to the idle state so the user can place another call.
-    if (app.pulse && pulse_is_connected(app.pulse)) {
-        PulseAsyncOperationResultCallbackConfig result_cb{ on_async_result, &app };
-        pulse_disconnect_async(app.pulse, &result_cb, nullptr);
-    }
+    // Same deal as on_sip_failure: walk Pulse all the way back to
+    // "never created" rather than just disconnecting, so the operator's
+    // bridge checkbox unlocks and the next Call rebuilds Pulse fresh.
+    app.destroy_pulse_pending.store(true);
     app.stage.store(static_cast<int>(CallStage::Idle));
 }
 
@@ -485,20 +490,32 @@ static void start_call(AppState & app)
     }
 }
 
+// destroy_pulse_now() lives further down, after the GLTextureContext
+// definition (it needs ctx.media_content). Forward-declared here so
+// start_hangup() / main loop can refer to it.
+static void destroy_pulse_now(AppState &              app,
+                              doppler::AppTransport & transport,
+                              struct GLTextureContext & remote_ctx,
+                              struct GLTextureContext & selfview_ctx);
+
 // "Hang up" button handler. UI thread only.
 static void start_hangup(AppState & app)
 {
     set_status(app, "Hanging up...");
+    // Send SIP BYE (or CANCEL for an early dialog) if we have an
+    // outbound dialog. The on_sip_ended callback will eventually fire
+    // on PJSIP's worker thread, but we don't depend on that for
+    // teardown - we request the full Pulse destruction right here so
+    // the operator sees media stop immediately, and so that even if
+    // there is no live dialog yet (stage-1 with no answer) Pulse is
+    // still torn down cleanly.
     if (app.sip)
         app.sip->hangup();
-    // The SIP "ended" callback will drive pulse_disconnect_async; but if
-    // we're somehow in stage-1 without a confirmed dialog, ask Pulse to
-    // disconnect anyway so we don't leak its media setup.
-    if (app.stage.load() == static_cast<int>(CallStage::Stage1Done)
-            && app.pulse && pulse_is_connected(app.pulse)) {
-        pulse_disconnect(app.pulse, nullptr);
-        app.stage.store(static_cast<int>(CallStage::Idle));
-    }
+    // The actual pulse_free() happens on the UI thread inside the
+    // main loop's per-frame drain of destroy_pulse_pending; doing it
+    // there keeps all GL / Pulse data-session teardown on the thread
+    // that owns the GL context.
+    app.destroy_pulse_pending.store(true);
 }
 
 // ----------------------------------------------------------------------------
@@ -583,6 +600,60 @@ static void shutdown_video_render_ctx(Pulse * pulse, GLTextureContext & ctx)
         glDeleteTextures(1, &ctx.texture);
         ctx.texture = 0;
     }
+}
+
+// Definition for the forward declaration up near start_hangup(). Lives
+// here because it needs the full GLTextureContext type for
+// ctx.media_content. See the doc comment on the forward declaration
+// for the contract; concretely this fully tears Pulse down (sync
+// disconnect -> data-session disconnect -> transport unbind ->
+// callbacks off -> pulse_free) and returns AppState to its pre-Call
+// shape so the next Call rebuilds via lazy_pulse_init().
+static void destroy_pulse_now(AppState &              app,
+                              doppler::AppTransport & transport,
+                              GLTextureContext &      remote_ctx,
+                              GLTextureContext &      selfview_ctx)
+{
+    if (!app.pulse) return;
+
+    // 1. Drop the SIP-level connection state first. We use the sync
+    //    variant because we're about to pulse_free() anyway - blocking
+    //    here just shifts the wait from inside pulse_free() to here.
+    if (pulse_is_connected(app.pulse))
+        pulse_disconnect(app.pulse, nullptr);
+
+    // 2. Disconnect the video data-sessions so Pulse stops trying to
+    //    deliver frames to buffers it's about to free. Mirror of what
+    //    attach_video_data_session() did in lazy_pulse_init(); we keep
+    //    the GL textures themselves alive for the next Call.
+    pulse_data_session_disconnect(app.pulse, PULSE_MEDIA_VIDEO,
+                                  PULSE_MEDIA_OUTPUT, remote_ctx.media_content);
+    pulse_data_session_disconnect(app.pulse, PULSE_MEDIA_VIDEO,
+                                  PULSE_MEDIA_OUTPUT, selfview_ctx.media_content);
+
+    // 3. Unbind the app-transport (stops the reader thread, closes
+    //    sockets, clears Pulse's pointer to our callback) so Pulse
+    //    can't fire on_outbound after we free it. Idempotent.
+    transport.shutdown();
+
+    // 4. Detach the remaining option-level callbacks (conference status
+    //    in particular) so Pulse doesn't invoke them during free().
+    uninstall_callbacks(app);
+
+    // 5. Release the Pulse handle itself.
+    pulse_free(app.pulse);
+    app.pulse = nullptr;
+
+    // 6. Reset the AppState bits that mirror Pulse-bound resources.
+    //    transport_storage stays - it's the long-lived AppTransport
+    //    instance owned by main(); the next lazy_pulse_init() will
+    //    re-bind it. bridge_bound goes back to false so the UI
+    //    checkbox unlocks and reflects "(pending - will bind on Call)"
+    //    again. The bridge_enabled (operator's intent) is preserved.
+    app.transport = nullptr;
+    app.bridge_bound.store(false);
+    app.connection_status.store(PULSE_CONNECTION_STATUS_DISCONNECTED);
+    app.stage.store(static_cast<int>(CallStage::Idle));
 }
 
 // Try to pull a fresh RGBA frame and upload it to the GL texture. No-op if
@@ -1027,6 +1098,13 @@ int main()
     // ---- Main loop -------------------------------------------------------
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        // Drain any pending Pulse-destruction request from the SIP
+        // worker thread (or from the Hang-up button). Doing this
+        // before draw_ui() means the very next frame after a hangup
+        // already reflects the post-teardown state in the UI.
+        if (app.destroy_pulse_pending.exchange(false)) {
+            destroy_pulse_now(app, transport, remote_ctx, selfview_ctx);
+        }
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -1043,35 +1121,23 @@ int main()
 
     // ---- Shutdown --------------------------------------------------------
     sip.stop();                     // sends BYE if needed
-    // Everything Pulse-related is conditional on `app.pulse` having been
-    // created by lazy_pulse_init() - if the operator quit before ever
-    // pressing Call, none of these calls are needed (and the Pulse
-    // handle doesn't exist, so most of them aren't even legal).
-    if (app.pulse) {
-        if (pulse_is_connected(app.pulse))
-            pulse_disconnect(app.pulse, nullptr);
-        // Disconnect the video data-sessions before we tear Pulse down.
-        // The GL context is still current here (glfwDestroyWindow happens
-        // later), so glDeleteTextures inside shutdown_video_render_ctx is
-        // safe.
-        shutdown_video_render_ctx(app.pulse, remote_ctx);
-        shutdown_video_render_ctx(app.pulse, selfview_ctx);
-        // Stop the reader thread, close sockets, clear the app-transport
-        // binding - all before pulse_free() so Pulse never sees a dangling
-        // callback while it's tearing the media engine down. Safe (no-op)
-        // when the bridge checkbox stayed off and we never bound it.
-        transport.shutdown();
-        uninstall_callbacks(app);
-        pulse_free(app.pulse);
-        app.pulse = nullptr;
-    } else {
-        // Pulse was never created - just release the GL textures and
-        // make sure the AppTransport's reader thread + sockets are
-        // torn down (in the never-bound case shutdown() is a no-op).
-        shutdown_video_render_ctx(nullptr, remote_ctx);
-        shutdown_video_render_ctx(nullptr, selfview_ctx);
-        transport.shutdown();
-    }
+    // Run the same Pulse teardown the Hang-up button uses (no-op if
+    // the operator quit before ever pressing Call - destroy_pulse_now
+    // returns immediately when app.pulse is null).
+    destroy_pulse_now(app, transport, remote_ctx, selfview_ctx);
+    // Release the GL textures - destroy_pulse_now() deliberately leaves
+    // them alive so the Hang-up path can keep the tiles around for the
+    // next Call, but at process exit there's no next Call. Passing
+    // nullptr for Pulse skips the data-session disconnect (already done
+    // inside destroy_pulse_now or never attached) and just deletes the
+    // texture. Also covers the "Pulse never created" case.
+    shutdown_video_render_ctx(nullptr, remote_ctx);
+    shutdown_video_render_ctx(nullptr, selfview_ctx);
+    // Belt-and-braces: transport.shutdown() is idempotent and was
+    // already called inside destroy_pulse_now if Pulse existed; this
+    // catches the "Pulse never created, transport never bound" path
+    // (where shutdown is still safe and a no-op).
+    transport.shutdown();
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
