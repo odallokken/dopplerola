@@ -609,6 +609,15 @@ static void shutdown_video_render_ctx(Pulse * pulse, GLTextureContext & ctx)
 // disconnect -> data-session disconnect -> transport unbind ->
 // callbacks off -> pulse_free) and returns AppState to its pre-Call
 // shape so the next Call rebuilds via lazy_pulse_init().
+//
+// CONTRACT: must remain idempotent. Both the UI thread (start_hangup)
+// and the PJSIP worker thread (on_sip_ended / on_sip_failure) can
+// flip destroy_pulse_pending to true between two consecutive main-loop
+// drains, so this helper may be invoked when Pulse is already gone -
+// the early `if (!app.pulse) return` is what makes that safe. Don't
+// let later additions to this function predicate side effects on
+// "we've definitely just torn something down" without first re-
+// asserting that invariant.
 static void destroy_pulse_now(AppState &              app,
                               doppler::AppTransport & transport,
                               GLTextureContext &      remote_ctx,
