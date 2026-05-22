@@ -131,6 +131,17 @@ actually receiving without Pulse spawning its own native windows
   symbol names are unchanged) but will **misbehave at runtime** until the
   new `.so` is in place. The link itself is unsound — the old `.so`'s
   `pulse_app_transport_push` is the 3-arg variant.
+* **Observed `audio/MUX` outbound ids (why audio stats can stay flat)**:
+  if logs show `send_packet {MAIN,audio,MUX} NO MATCHING CHANNEL` while the
+  bridge only has split `{MAIN,audio,RTP}` + `{MAIN,audio,RTCP}` channels,
+  the callback/channel-id contract is mismatched and packets are dropped
+  before they reach the socket counters. In short: yes, app-transport is
+  currently surfacing `MUX` for that stream in this runtime combination, and
+  yes, this can be treated as a Pulse-side behavior bug (or version-skew)
+  relative to the channel-aware headers. The bridge now includes a narrow
+  compatibility fallback for this case (classify mux packet as RTP vs RTCP
+  and route to the corresponding split channel) so audio can flow while the
+  Pulse `.so` side is aligned.
 * **Local IPv4 address**: `AppTransport` rewrites the `c=IN IP4` line in
   Pulse's stage-1 offer (Pulse stamps `127.0.0.1` there because, with an
   app-transport set, it no longer does ICE / host-candidate gathering).
