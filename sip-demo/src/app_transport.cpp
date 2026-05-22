@@ -369,6 +369,18 @@ static bool should_log(uint64_t n)
     return n <= 8 || (n & (n - 1)) == 0;
 }
 
+// RFC 5761 RTP/RTCP demux for mux packets: version-2 packets with PT in
+// 192..223 are RTCP, everything else is treated as RTP.
+static PulseAppChannelKind classify_mux_packet_kind(const uint8_t * data, int size)
+{
+    if (!data || size < 2) return PULSE_APP_CHANNEL_KIND_RTP;
+    const uint8_t version = static_cast<uint8_t>(data[0] >> 6);
+    if (version != 2) return PULSE_APP_CHANNEL_KIND_RTP;
+    const uint8_t pt = data[1];
+    if (pt >= 192 && pt <= 223) return PULSE_APP_CHANNEL_KIND_RTCP;
+    return PULSE_APP_CHANNEL_KIND_RTP;
+}
+
 // Pick the local IPv4 address to advertise in the rewritten SDP.
 //
 // IMPORTANT: Pulse's stage-1 offer comes back with 127.0.0.1 in its c=
@@ -511,6 +523,7 @@ struct AppTransport::Impl {
     std::atomic<uint64_t> cb_no_channel  {0};
     std::atomic<uint64_t> cb_null_data   {0};
     std::atomic<uint64_t> cb_unbound     {0};
+    std::atomic<uint64_t> cb_mux_fallback{0};
 
     // ----- callback plumbing ------------------------------------------------
 
@@ -573,6 +586,7 @@ struct AppTransport::Impl {
         int fd = -1;
         Channel * chan = nullptr;
         bool found      = false;
+        bool used_mux_fallback = false;
         bool no_remote  = false;
         bool bad_fd     = false;
         {
@@ -586,6 +600,24 @@ struct AppTransport::Impl {
                     remote = c.remote;
                     fd     = c.fd;
                     break;
+                }
+            }
+            if (!found && id.kind == PULSE_APP_CHANNEL_KIND_MUX) {
+                const PulseAppChannelKind fallback_kind =
+                    classify_mux_packet_kind(data, size);
+                for (auto & c : channels) {
+                    if (c.id.content == id.content
+                        && c.id.type == id.type
+                        && c.id.kind == fallback_kind) {
+                        found = true;
+                        used_mux_fallback = true;
+                        chan  = &c;
+                        if (!c.remote_set) { no_remote = true; break; }
+                        if (c.fd < 0)      { bad_fd    = true; break; }
+                        remote = c.remote;
+                        fd     = c.fd;
+                        break;
+                    }
                 }
             }
         }
@@ -622,6 +654,20 @@ struct AppTransport::Impl {
             return;
         }
 
+        const PulseAppChannelId & route_id = chan->id;
+        if (used_mux_fallback) {
+            uint64_t n = cb_mux_fallback.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (should_log(n)) {
+                std::fprintf(stderr,
+                    "[app-transport] send_packet %s fallback-routed to %s "
+                    "(size=%d, cb_mux_fallback=%llu)\n",
+                    channel_id_str(id).c_str(),
+                    channel_id_str(route_id).c_str(),
+                    size,
+                    static_cast<unsigned long long>(n));
+            }
+        }
+
         // Matched a channel - count the callback against it regardless
         // of whether it eventually reaches the wire.
         uint64_t cb_n = chan->cb_calls.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -633,7 +679,7 @@ struct AppTransport::Impl {
                 std::fprintf(stderr,
                     "[app-transport] send_packet %s remote not yet set "
                     "(size=%d, cb=%llu, drops_no_remote=%llu) - dropped\n",
-                    channel_id_str(id).c_str(), size,
+                    channel_id_str(route_id).c_str(), size,
                     static_cast<unsigned long long>(cb_n),
                     static_cast<unsigned long long>(n));
             }
@@ -646,7 +692,7 @@ struct AppTransport::Impl {
                 std::fprintf(stderr,
                     "[app-transport] send_packet %s socket closed "
                     "(size=%d, cb=%llu, drops_bad_fd=%llu) - dropped\n",
-                    channel_id_str(id).c_str(), size,
+                    channel_id_str(route_id).c_str(), size,
                     static_cast<unsigned long long>(cb_n),
                     static_cast<unsigned long long>(n));
             }
@@ -659,7 +705,7 @@ struct AppTransport::Impl {
                 std::fprintf(stderr,
                     "[app-transport] send_packet %s zero-size buffer "
                     "(cb=%llu, drops_zero=%llu) - dropped\n",
-                    channel_id_str(id).c_str(),
+                    channel_id_str(route_id).c_str(),
                     static_cast<unsigned long long>(cb_n),
                     static_cast<unsigned long long>(n));
             }
@@ -682,7 +728,7 @@ struct AppTransport::Impl {
                     "[app-transport] send_packet %s sendto() failed: "
                     "errno=%d (%s) fd=%d dst=%s:%u size=%d "
                     "(cb=%llu, drops_send_err=%llu) - dropped\n",
-                    channel_id_str(id).c_str(),
+                    channel_id_str(route_id).c_str(),
                     saved, std::strerror(saved), fd,
                     ipbuf, ntohs(remote.sin_port), size,
                     static_cast<unsigned long long>(cb_n),
@@ -702,7 +748,7 @@ struct AppTransport::Impl {
             std::fprintf(stderr,
                 "[app-transport] send_packet %s first packet on the wire "
                 "(fd=%d dst=%s:%u size=%d cb=%llu)\n",
-                channel_id_str(id).c_str(), fd,
+                channel_id_str(route_id).c_str(), fd,
                 ipbuf, ntohs(remote.sin_port), size,
                 static_cast<unsigned long long>(cb_n));
         }
