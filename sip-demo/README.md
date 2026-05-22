@@ -142,6 +142,25 @@ actually receiving without Pulse spawning its own native windows
   compatibility fallback for this case (classify mux packet as RTP vs RTCP
   and route to the corresponding split channel) so audio can flow while the
   Pulse `.so` side is aligned.
+* **Summary to share with Pulse developers**
+  - **Repro**: start `sip-demo` with app-transport enabled and place a SIP
+    call where audio/video are negotiated; bridge registers split audio
+    channels (`RTP` + `RTCP`) for `MAIN/audio`.
+  - **Observed**: outbound callback ids intermittently arrive as
+    `{MAIN,audio,MUX}` instead of split `{MAIN,audio,RTP|RTCP}`. Logs show
+    `send_packet {MAIN,audio,MUX} NO MATCHING CHANNEL`, and outbound audio
+    packet/byte counters can remain flat.
+  - **Expected**: with split channel registration for audio, outbound packets
+    should be tagged as `RTP` or `RTCP` consistently (or the callback/channel
+    contract should clearly define when `MUX` is emitted).
+  - **Impact**: packets are dropped before socket send on channel mismatch;
+    this can present as one-way or missing audio while video may still flow.
+  - **Current bridge mitigation**: for unmatched `MUX` on audio, classify the
+    packet payload as RTP vs RTCP and forward to the corresponding split
+    channel as a compatibility fallback.
+  - **Why this is flagged Pulse-side**: behavior is inconsistent with the
+    channel-aware app-transport header contract this demo was built against,
+    suggesting runtime `.so` behavior/version skew or a Pulse callback-id bug.
 * **Local IPv4 address**: `AppTransport` rewrites the `c=IN IP4` line in
   Pulse's stage-1 offer (Pulse stamps `127.0.0.1` there because, with an
   app-transport set, it no longer does ICE / host-candidate gathering).
