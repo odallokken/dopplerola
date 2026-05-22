@@ -198,7 +198,22 @@ static void cb_on_state_changed(pjsip_inv_session * inv, pjsip_event * /*e*/)
             pj_bzero(&sel, sizeof(sel));
             sel.type        = PJSIP_TPSELECTOR_TRANSPORT;
             sel.u.transport = inv->invite_tsx->transport;
-            pjsip_dlg_set_transport(inv->dlg, &sel);
+            pj_status_t pst = pjsip_dlg_set_transport(inv->dlg, &sel);
+            if (pst == PJ_SUCCESS) {
+                std::fprintf(stderr,
+                    "SIP: pinned dialog to transport %s to keep TCP alive "
+                    "for the call lifetime\n",
+                    inv->invite_tsx->transport->info);
+            } else {
+                std::fprintf(stderr,
+                    "SIP: pjsip_dlg_set_transport failed (%s); call may be "
+                    "torn down by PJSIP's TCP idle timer\n",
+                    pj_err(pst).c_str());
+            }
+        } else {
+            std::fprintf(stderr,
+                "SIP: no invite_tsx/transport available at CONFIRMED; "
+                "skipping transport pin (TCP idle timer may fire mid-call)\n");
         }
 
         // The negotiator now has an active answer; grab it.

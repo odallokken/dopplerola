@@ -180,9 +180,11 @@ actually receiving without Pulse spawning its own native windows
 * **TCP transport idle-timer / long calls**: PJSIP's TCP transport ships
   with the default `PJSIP_TRANSPORT_IDLE_TIME` watchdog (600s). PJSIP
   only ref-counts the transport for the lifetime of individual
-  transactions, so after INVITE/ACK complete (~32s) refcount drops to 0
-  and, with no further SIP traffic until the BYE, the watchdog destroys
-  the transport mid-call — surfacing as
+  transactions, so once the INVITE transaction completes (typically
+  ~32s later, after PJSIP's `Timer J`/`Timer H` cleanup windows
+  defined in RFC 3261 §17 — i.e. `64*T1` with `T1 = 500ms`) the
+  refcount drops to 0. With no further SIP traffic until the BYE,
+  the watchdog destroys the transport mid-call — surfacing as
   `Transport tcp ... is being destroyed due to timeout in idle timer`
   and losing the signalling leg. To prevent this, `sip_ua.cpp` pins the
   dialog to its selected transport via `pjsip_dlg_set_transport()`
