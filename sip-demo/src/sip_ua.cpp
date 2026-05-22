@@ -177,6 +177,30 @@ static void cb_on_state_changed(pjsip_inv_session * inv, pjsip_event * /*e*/)
     if (!impl) return;
 
     if (inv->state == PJSIP_INV_STATE_CONFIRMED && !impl->got_answer) {
+        // Pin the dialog to the TCP transport that carried this call so
+        // PJSIP's transport-idle timer can't destroy the connection mid-call.
+        //
+        // Background: pjsip_tcp_transport_start() installs the usual
+        // PJSIP_TRANSPORT_IDLE_TIME watchdog (default 600s). PJSIP only
+        // ref-counts the transport for the duration of in-flight
+        // transactions — INVITE/ACK hold a ref for ~32s, then drop to zero.
+        // With no further SIP traffic between the ACK and the eventual BYE,
+        // the idle timer fires after ~10 minutes and we see
+        //   "Transport tcp ... is being destroyed due to timeout in idle timer"
+        // which kills the signalling leg out from under the active call.
+        //
+        // pjsip_dlg_set_transport(TPSELECTOR_TRANSPORT) takes a reference
+        // on the transport via the dialog's tp_sel; that ref is held until
+        // the dialog is destroyed (i.e. when the call ends), which keeps
+        // the idle timer disarmed for the entire call lifetime.
+        if (inv->invite_tsx && inv->invite_tsx->transport) {
+            pjsip_tpselector sel;
+            pj_bzero(&sel, sizeof(sel));
+            sel.type        = PJSIP_TPSELECTOR_TRANSPORT;
+            sel.u.transport = inv->invite_tsx->transport;
+            pjsip_dlg_set_transport(inv->dlg, &sel);
+        }
+
         // The negotiator now has an active answer; grab it.
         const pjmedia_sdp_session * remote = nullptr;
         if (inv->neg &&
