@@ -262,6 +262,25 @@ static void connect_default_devices(AppState & app)
     }
 }
 
+// Mirror of connect_default_devices(): release the camera / mic / speaker
+// device sessions that were attached on the way up. pulse_free() would
+// also tear these down, but doing it explicitly here keeps the
+// setup/teardown narrative symmetric (one named step in lazy_pulse_init
+// gets one named step in destroy_pulse_now), the same pattern
+// setup_pulse_callbacks/clear_pulse_callbacks use in pexninja.cpp.
+//
+// The two disconnect entry points are deliberately less granular than
+// the connect side: pulse_device_session_disconnect_main_audio() drops
+// both microphone and speaker in one call, and the main-video disconnect
+// takes only a direction (we only ever connect MAIN/VIDEO/INPUT, so we
+// only undo that one).
+static void disconnect_default_devices(AppState & app)
+{
+    pulse_device_session_disconnect_main_video(
+        app.pulse, PULSE_MEDIA_CONTENT_MAIN, PULSE_MEDIA_INPUT);
+    pulse_device_session_disconnect_main_audio(app.pulse);
+}
+
 static void uninstall_callbacks(AppState & app)
 {
     pulse_options_set_conference_state_callback(app.pulse, nullptr);
@@ -348,10 +367,16 @@ static bool lazy_pulse_init(AppState & app)
 {
     if (app.pulse) return true;     // already initialised on a prior Call
 
-    // External-rest mode: PJSIP owns SIP signalling, Pulse is purely a
-    // media engine. The update_sdp callback fires if Pulse later wants
-    // to renegotiate (e.g. add a content stream); we register it against
-    // `&app` so it can post into the UI status line.
+    // The numbered steps below are mirrored, in reverse, by the matching
+    // steps in destroy_pulse_now(). Lesson from pexninja.cpp: every
+    // named setup step earns a named teardown step. Keep them in sync
+    // whenever you add or remove one.
+
+    // 1. pulse_new_external_rest(): PJSIP owns SIP signalling, Pulse is
+    //    purely a media engine. The update_sdp callback fires if Pulse
+    //    later wants to renegotiate (e.g. add a content stream); we
+    //    register it against `&app` so it can post into the UI status
+    //    line.
     PulseExternalRestCallbackConfig ext_rest_cfg{};
     ext_rest_cfg.update_sdp_callback     = on_pulse_update_sdp;
     ext_rest_cfg.update_sdp_user_context = &app;
@@ -361,10 +386,10 @@ static bool lazy_pulse_init(AppState & app)
         return false;
     }
 
-    // AppTransport bind. The checkbox value here is whatever the
-    // operator last left it at - if they unchecked it before pressing
-    // Call, we skip the bind entirely and Pulse never even sees our
-    // callback.
+    // 2. AppTransport bind. The checkbox value here is whatever the
+    //    operator last left it at - if they unchecked it before pressing
+    //    Call, we skip the bind entirely and Pulse never even sees our
+    //    callback.
     if (app.bridge_enabled.load() && app.transport_storage) {
         PulseError xport_err = app.transport_storage->bind_to_pulse(app.pulse);
         if (xport_err != PULSE_SUCCESS) {
@@ -379,24 +404,26 @@ static bool lazy_pulse_init(AppState & app)
         }
     }
 
+    // 3. install_callbacks(): conference-state callback + UA string.
     install_callbacks(app);
 
-    // We render the video ourselves below (see GLTextureContext) by
-    // pulling RGBA frames out of Pulse via the data-session API. Tell
-    // Pulse NOT to also spawn its own native windows for self-view, the
-    // far end or presentation - these have to be cleared BEFORE the
-    // first connect (i.e. before stage_1), otherwise Pulse pops them up
-    // the moment media starts flowing. Mirrors src/main.cpp.
+    // 4. We render the video ourselves below (see GLTextureContext) by
+    //    pulling RGBA frames out of Pulse via the data-session API. Tell
+    //    Pulse NOT to also spawn its own native windows for self-view,
+    //    the far end or presentation - these have to be cleared BEFORE
+    //    the first connect (i.e. before stage_1), otherwise Pulse pops
+    //    them up the moment media starts flowing. Mirrors src/main.cpp.
     pulse_options_set_self_view_window_handle         (app.pulse, nullptr);
     pulse_options_set_remote_video_window_handle      (app.pulse, nullptr);
     pulse_options_set_presentation_video_window_handle(app.pulse, nullptr);
 
+    // 5. connect_default_devices(): camera / microphone / speaker.
     connect_default_devices(app);
 
-    // Open the RGBA data-session outputs for the streams the UI tiles
-    // already have GL textures for (MAIN = incoming far-end video,
-    // SELFVIEW = our own camera feed). Pulse starts feeding frames as
-    // soon as media exists.
+    // 6. attach_video_data_session(): open the RGBA data-session
+    //    outputs for the streams the UI tiles already have GL textures
+    //    for (MAIN = incoming far-end video, SELFVIEW = our own camera
+    //    feed). Pulse starts feeding frames as soon as media exists.
     if (app.remote_ctx_storage)
         attach_video_data_session(app.pulse, app.remote_ctx_storage);
     if (app.selfview_ctx_storage)
@@ -585,6 +612,19 @@ static void attach_video_data_session(Pulse * pulse, GLTextureContext * ctx)
     pulse_data_session_config_free(cfg);
 }
 
+// Mirror of attach_video_data_session(): close the RGBA output Pulse was
+// pushing into this tile's GL texture. Used by destroy_pulse_now() to
+// keep the setup/teardown pair symmetric - the GL texture itself is
+// left alive, owned by main()'s GLTextureContext, so the next
+// lazy_pulse_init() can re-attach to the same texture. Compare with
+// shutdown_video_render_ctx() below, which also deletes the texture
+// (that one runs at process exit, this one runs on hang-up).
+static void detach_video_data_session(Pulse * pulse, GLTextureContext * ctx)
+{
+    pulse_data_session_disconnect(pulse, PULSE_MEDIA_VIDEO,
+                                  PULSE_MEDIA_OUTPUT, ctx->media_content);
+}
+
 static void shutdown_video_render_ctx(Pulse * pulse, GLTextureContext & ctx)
 {
     // Pulse may be null if the operator quit before ever pressing Call -
@@ -625,40 +665,57 @@ static void destroy_pulse_now(AppState &              app,
 {
     if (!app.pulse) return;
 
-    // 1. Drop the SIP-level connection state first. We use the sync
-    //    variant because we're about to pulse_free() anyway - blocking
-    //    here just shifts the wait from inside pulse_free() to here.
+    // The steps below are the literal reverse of lazy_pulse_init() (look
+    // for the matching numbered comments there). Lesson taken from
+    // pexninja.cpp's setup_pulse_callbacks / clear_pulse_callbacks pair:
+    // every named setup step has a named teardown step in the inverse
+    // order, even when pulse_free() would clean it up anyway. Keeps the
+    // demo's lifecycle obvious and prevents "the call lingered after
+    // hang-up" bugs.
+
+    // Inverse of pulse_setup_stage_1/stage_2 (which run in start_call /
+    // on_sip_answer, not in lazy_pulse_init). Sync variant - we're
+    // about to pulse_free() anyway, blocking here just moves the wait
+    // out of pulse_free(). Skipped if we never reached CONNECTED (e.g.
+    // hang-up between stage-1 and the 200 OK).
     if (pulse_is_connected(app.pulse))
         pulse_disconnect(app.pulse, nullptr);
 
-    // 2. Disconnect the video data-sessions so Pulse stops trying to
-    //    deliver frames to buffers it's about to free. Mirror of what
-    //    attach_video_data_session() did in lazy_pulse_init(); we keep
-    //    the GL textures themselves alive for the next Call.
-    pulse_data_session_disconnect(app.pulse, PULSE_MEDIA_VIDEO,
-                                  PULSE_MEDIA_OUTPUT, remote_ctx.media_content);
-    pulse_data_session_disconnect(app.pulse, PULSE_MEDIA_VIDEO,
-                                  PULSE_MEDIA_OUTPUT, selfview_ctx.media_content);
+    // 6'. Inverse of attach_video_data_session(): close the RGBA outputs
+    //     so Pulse stops trying to deliver frames to buffers it's about
+    //     to free. GL textures stay alive for the next call.
+    detach_video_data_session(app.pulse, &selfview_ctx);
+    detach_video_data_session(app.pulse, &remote_ctx);
 
-    // 3. Unbind the app-transport (stops the reader thread, closes
-    //    sockets, clears Pulse's pointer to our callback) so Pulse
-    //    can't fire on_outbound after we free it. Idempotent.
-    transport.shutdown();
+    // 5'. Inverse of connect_default_devices(): drop camera / mic /
+    //     speaker device sessions.
+    disconnect_default_devices(app);
 
-    // 4. Detach the remaining option-level callbacks (conference status
-    //    in particular) so Pulse doesn't invoke them during free().
+    // 4'. Inverse of the three pulse_options_set_*_window_handle(nullptr)
+    //     calls in lazy_pulse_init(). They're already null, so there's
+    //     nothing to undo here - the named step exists only as
+    //     documentation of the mirror.
+
+    // 3'. Inverse of install_callbacks(): clear the conference-state
+    //     callback so Pulse doesn't invoke it during pulse_free().
     uninstall_callbacks(app);
 
-    // 5. Release the Pulse handle itself.
+    // 2'. Inverse of transport_storage->bind_to_pulse(): stop the
+    //     reader thread, close sockets, clear Pulse's pointer to our
+    //     callback so it can't fire on_outbound after we free. Idempotent
+    //     - safe even when the bridge was never bound.
+    transport.shutdown();
+
+    // 1'. Inverse of pulse_new_external_rest(): release the handle.
     pulse_free(app.pulse);
     app.pulse = nullptr;
 
-    // 6. Reset the AppState bits that mirror Pulse-bound resources.
-    //    transport_storage stays - it's the long-lived AppTransport
-    //    instance owned by main(); the next lazy_pulse_init() will
-    //    re-bind it. bridge_bound goes back to false so the UI
-    //    checkbox unlocks and reflects "(pending - will bind on Call)"
-    //    again. The bridge_enabled (operator's intent) is preserved.
+    // Mirror back the AppState bookkeeping lazy_pulse_init() set up.
+    // transport_storage stays - it's the long-lived AppTransport instance
+    // owned by main(); the next lazy_pulse_init() will re-bind it.
+    // bridge_bound goes back to false so the UI checkbox unlocks and
+    // reflects "(pending - will bind on Call)" again. bridge_enabled
+    // (operator's intent) is preserved.
     app.transport = nullptr;
     app.bridge_bound.store(false);
     app.connection_status.store(PULSE_CONNECTION_STATUS_DISCONNECTED);
