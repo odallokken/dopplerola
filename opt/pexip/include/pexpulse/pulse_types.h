@@ -1306,11 +1306,7 @@ struct _PulseParticipantListSortingConfig
 
 struct _PulseTuneables
 {
-  struct
-  {
-    uint32_t local_candidates_sync_gathering_timeout_us; /*(uint32_t)-1 : wait forever, 0 : don't wait, N number of us
-                                                            to wait for sync candidate gathering */
-  } trickle_ice;
+  int placeholder; /* Nothing here now, but keeping it for later. */
 };
 
 PULSE_DECL_END

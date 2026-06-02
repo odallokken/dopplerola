@@ -832,39 +832,27 @@ PulseError pulse_options_set_ice_candidate_active_ip_filtering (Pulse * client, 
 /**
  * @brief Configure application-driven RTP transport.
  *
- * Opts the client into application-driven transport for RTP/RTCP, instead of the default
- * UDP-on-the-wire (port- or ICE-based) transport. Once configured:
- *   - Outbound packets that the media layer wants to send are delivered to @p cb, each tagged
- *     with a #PulseAppChannelId identifying the wire the packet was queued on.
- *   - Inbound packets are fed back into the media layer via #pulse_app_transport_push, with the
- *     same #PulseAppChannelId tagging which wire they were received on.
+ * Opts the client into application-driven transport for RTP/RTCP instead of the default
+ * UDP transport. Outbound packets are delivered to @p cb tagged with a #PulseAppChannelId;
+ * inbound packets are fed back via #pulse_app_transport_push using the same channel id.
+ * See #PulseAppChannelId for bundle vs. non-bundle channel-id semantics.
  *
- * In bundle mode (today's WebRTC/Infinity calls) the client emits exactly one channel id (the
- * canonical zero-initialised bundle id, `{MAIN, AUDIO, MUX}` — content/type are opaque). In SIP
- * non-bundle mode (with or without `a=rtcp-mux`) the client emits up to two channel ids per
- * `m=` section. See #PulseAppChannelId for the per-mode semantics.
+ * Must be called before connection setup begins; later calls return
+ * @c PULSE_ERROR_ALREADY_CONNECTED. App-driven transport is mutually exclusive with the
+ * default port-/ICE-based transport — pick one before connecting.
  *
- * Passing @p cb == NULL clears the binding (explicit unbind). When the binding is replaced or
- * cleared, the previously-registered @p destroy_cb is invoked (synchronously, after any in-flight
- * outbound callback has drained) so the application can release any state it associated with the
- * binding.
- *
- * Like other pulse_options_* setters, this function must be called BEFORE the client is connected;
- * a call made while the client is in the connected state returns @c PULSE_ERROR_ALREADY_CONNECTED.
- * The binding is preserved across internal RTP-session resets (e.g. ICE restarts, breakout-room
- * transfers); the application does not need to re-register the callbacks after a reconnect.
- *
- * Mutual exclusion: app-driven transport is mutually exclusive with the default port- and
- * ICE-driven transport. Pulse follows the same "last setter wins" semantics already used by the
- * other transport-related pulse_options_set_* setters; the application is expected to pick a single
- * transport mode for the client and stick with it before connecting.
+ * Once a non-NULL @p cb has been installed the binding is sticky for the lifetime of the
+ * client: a subsequent call with @c cb == NULL returns @c PULSE_ERROR_INVALID_PARAMETER.
+ * To switch transport mode, destroy the client with @c pulse_free and create a fresh one.
+ * When the binding is replaced, the previous @p destroy_cb is invoked; final teardown
+ * happens inside @c pulse_free.
  *
  * @param client The Pulse handle.
- * @param cb Outbound packet callback, or NULL to clear the binding. See #PulseAppPacketCallback for
- *   threading and buffer-borrow semantics.
+ * @param cb Outbound packet callback. NULL is allowed only on a client that has never had
+ *   a non-NULL binding installed; otherwise the call returns @c PULSE_ERROR_INVALID_PARAMETER.
+ *   See #PulseAppPacketCallback for threading and buffer-borrow semantics.
  * @param user_data Opaque pointer passed to @p cb and @p destroy_cb. May be NULL.
- * @param destroy_cb Optional release callback for @p user_data. Invoked when the binding is
- *   replaced, explicitly cleared, or when the Pulse client is freed. May be NULL.
+ * @param destroy_cb Optional release callback for @p user_data. May be NULL.
  * @return PULSE_SUCCESS (0) on success, or a PulseError code in case of a failure.
  */
 PULSE_EXPORT
