@@ -1,0 +1,7 @@
+# Fetched by fetch-deps.ps1 — not committed.
+/third_party/
+
+# NuGet restore output and MSBuild artifacts.
+/packages/
+/build/
+*.user

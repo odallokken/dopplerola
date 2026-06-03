@@ -37,6 +37,25 @@ time via `FetchContent`. The Dear ImGui tag is the `-docking` variant because
 `pexninja` uses multi-viewport + docking features; the simpler demos keep
 building unchanged against the same superset.
 
+## Building on Windows (MSVC + the Pulse NuGet)
+
+Prefer Visual Studio over CMake on Windows? There is a native MSVC project
+under [`msvc/`](msvc/) that builds the very same `pexninja.cpp` and links the
+Pulse runtime from the **`Pexip.Pulse` NuGet package** shipped in this repo
+under [`../../sdk/windows`](../../sdk/windows) — the same package the
+[`windows`](../windows/) WinForms demo uses, just consumed by a native C++
+target. The other dependencies (ImGui docking, ImPlot, gl3w, ImGui-Addons and
+GLFW) are fetched at the same pinned versions used here.
+
+```powershell
+cd msvc
+powershell -ExecutionPolicy Bypass -File .\fetch-deps.ps1
+nuget restore pexninja.sln
+msbuild pexninja.sln /p:Configuration=Release /p:Platform=x64
+```
+
+See [`msvc/README.md`](msvc/README.md) for the details.
+
 ## Building on macOS
 
 The repo ships the macOS Pulse libraries under [`../../sdk/macos/`](../../sdk/macos/)
