@@ -71,7 +71,15 @@
 
 #include <cassert>
 #include <inttypes.h>
+#if defined(HOST_WINDOWS)
+/* The Pexip.Pulse NuGet package lays its C headers out flat (pulse.h next to
+ * pulse_types.h …) rather than under a pexpulse/ subdirectory like the Linux
+ * .deb / macOS SDK do. The MSVC project adds build/native/include to the
+ * include path, so include the header by its bare name there. */
+#include <pulse.h>
+#else
 #include <pexpulse/pulse.h>
+#endif
 
 #if !defined(HOST_WINDOWS)
 #include <unistd.h> /* gethostname() — used to build the displayed RTMP Publish URL */

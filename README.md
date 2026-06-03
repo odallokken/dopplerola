@@ -17,7 +17,7 @@ of the SDK. Extending the repo? Read [`AGENTS.md`](AGENTS.md) and
 | [**doppler**](demos/doppler/) | A Pexip Infinity video call in one heavily-commented file: connect over REST, render the remote + self-view yourself, plus RTMP ingest and a camera-on-RTMP "Twitch mix". | C++ / CMake · built by default |
 | [**gateway**](demos/gateway/) | Two Pulse instances bridged together, relaying raw audio + video between two conferences using only the data-session input/output APIs — a tiny cross-domain "guard". | C++ / CMake · built by default |
 | [**sip**](demos/sip/) | Pulse used purely as a media engine, with **PJSIP** doing the SIP signalling (manual SDP offer/answer). No Pexip Infinity node required. | C++ / CMake · opt-in (needs PJSIP) |
-| [**pexninja**](demos/pexninja/) | The full reference client (~12k LoC) exercising the **widest array** of Pulse functionality — conference control, roster, devices, annotation, media stats and much more. | C++ / CMake · opt-in (extra deps) |
+| [**pexninja**](demos/pexninja/) | The full reference client (~12k LoC) exercising the **widest array** of Pulse functionality — conference control, roster, devices, annotation, media stats and much more. | C++ / CMake (Linux, macOS) · MSVC (Windows, via the Pulse NuGet) · opt-in (extra deps) |
 | [**android**](demos/android/) | A Kotlin/Gradle sample app using the **Pulse Android SDK**: preflight, join, roster, chat, screen share, media stats. | Android / Gradle |
 | [**windows**](demos/windows/) | A native Windows **WinForms** app that places a call through the **Pexip.Pulse NuGet package**: connect over REST and follow the call state in a small UI. | Windows / .NET (WinForms) |
 
