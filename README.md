@@ -19,6 +19,7 @@ of the SDK. Extending the repo? Read [`AGENTS.md`](AGENTS.md) and
 | [**sip**](demos/sip/) | Pulse used purely as a media engine, with **PJSIP** doing the SIP signalling (manual SDP offer/answer). No Pexip Infinity node required. | C++ / CMake · opt-in (needs PJSIP) |
 | [**pexninja**](demos/pexninja/) | The full reference client (~12k LoC) exercising the **widest array** of Pulse functionality — conference control, roster, devices, annotation, media stats and much more. | C++ / CMake · opt-in (extra deps) |
 | [**android**](demos/android/) | A Kotlin/Gradle sample app using the **Pulse Android SDK**: preflight, join, roster, chat, screen share, media stats. | Android / Gradle |
+| [**windows**](demos/windows/) | A native Windows **WinForms** app that places a call through the **Pexip.Pulse NuGet package**: connect over REST and follow the call state in a small UI. | Windows / .NET (WinForms) |
 
 ## 1. Install the Pexip Pulse runtime
 
