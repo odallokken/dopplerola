@@ -209,21 +209,39 @@ cmake --build build -j --target pulse_gateway
 
 `pexninja/` contains a much fuller Pulse client (~12k LoC, lifted from
 another repo). It uses the same `libpexpulse` but layers in ImPlot,
-gl3w, ImGui-Addons (file browser) and GStreamer. It's gated behind a CMake
+gl3w and ImGui-Addons (file browser). It's gated behind a CMake
 option so the default `doppler` build stays lean:
 
 ```bash
-sudo apt-get install -y libglib2.0-dev libgstreamer1.0-dev \
-                        libgstreamer-plugins-base1.0-dev libx11-dev
+sudo apt-get install -y libx11-dev libglfw3-dev libgl1-mesa-dev
 cmake -S . -B build -DBUILD_PEXNINJA=ON
 cmake --build build -j --target pexninja
 ./build/run-pexninja.sh
 ```
 
+`pexninja` no longer depends on GLib or GStreamer. Those were previously
+pulled in only for logging and a few string/queue helpers, which now use
+native C++/POSIX code. This avoids a runtime clash with the GLib/GStreamer
+copies that `libpexlgpl` links statically.
+
 The extra dependencies (ImPlot, gl3w, ImGui-Addons) are fetched at configure
 time via `FetchContent`. The Dear ImGui tag is the `-docking` variant
 because `pexninja` uses multi-viewport + docking features; the simpler
 `doppler` target keeps building unchanged against the same superset.
+
+### Building `pexninja` on macOS
+
+The repo ships the macOS Pulse libraries under `macOs/`
+(`libpexpulse.dylib`, `libpexlgpl.dylib`). Install GLFW via Homebrew and
+enable the same option; the build links the CoreGraphics, CoreFoundation
+and AppKit frameworks instead of X11:
+
+```bash
+brew install glfw
+cmake -S . -B build -DBUILD_PEXNINJA=ON \
+      -DPEXIP_PREFIX="$(pwd)/macOs"
+cmake --build build -j --target pexninja
+```
 
 ## Building the `doppler-sip` SIP-mode demo
 

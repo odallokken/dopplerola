@@ -4,26 +4,30 @@
 # The .cpp in this directory was lifted from another repository and is being
 # ported to build inside the doppler tree. It exercises a much wider Pulse
 # surface than src/main.cpp (the rest of doppler), so it pulls in a fatter
-# dependency tree: ImPlot, gl3w, ImGui-Addons (file browser) and GStreamer.
+# dependency tree: ImPlot, gl3w and ImGui-Addons (file browser).
+#
+# It used to also depend on the system GLib + GStreamer, but those clashed at
+# runtime with the copies statically linked into libpexlgpl, so they have been
+# replaced by native C++/POSIX code directly in pexninja.cpp (logging now just
+# goes to stdout/stderr). No GLib/GStreamer packages are required any more.
 #
 # We keep this build self-contained — the parent CMakeLists.txt just calls
 # add_subdirectory(pexninja). Run `cmake --build build --target pexninja` to
-# build just this one binary.
+# build just this one binary. It builds on Linux and macOS.
 # ---------------------------------------------------------------------------
 
 # ---- System dependencies --------------------------------------------------
-# OpenGL / GLFW / Threads / X11 are needed for the window + GL context.
-# GStreamer + GLib are used by pexninja's media pipeline helpers.
+# OpenGL / GLFW / Threads are needed for the window + GL context. X11 is only
+# used by the Linux window-enumeration helpers; on macOS the equivalent code
+# uses the CoreGraphics / CoreFoundation frameworks instead.
 find_package(OpenGL REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(Threads REQUIRED)
-find_package(X11 REQUIRED)
-find_package(PkgConfig REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter) # gl3w generator
 
-pkg_check_modules(GLIB    REQUIRED IMPORTED_TARGET glib-2.0)
-pkg_check_modules(GSTREAMER REQUIRED IMPORTED_TARGET gstreamer-1.0
-                                                     gstreamer-app-1.0)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(X11 REQUIRED)
+endif()
 
 # ---- Fetched third-party dependencies -------------------------------------
 include(FetchContent)
@@ -152,11 +156,23 @@ target_link_libraries(pexninja PRIVATE
     pexninja_implot
     pexninja_imgui_addons
     pexip::pulse
-    PkgConfig::GLIB
-    PkgConfig::GSTREAMER
     gl3w
-    ${X11_LIBRARIES}
     Threads::Threads)
+
+# Platform-specific window/display enumeration backends.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(pexninja PRIVATE ${X11_LIBRARIES})
+elseif(APPLE)
+    # The HOST_DARWIN code path enumerates windows/displays via CoreGraphics
+    # and CoreFoundation, and AppKit is pulled in by GLFW's Cocoa backend.
+    find_library(COREGRAPHICS_LIBRARY CoreGraphics REQUIRED)
+    find_library(COREFOUNDATION_LIBRARY CoreFoundation REQUIRED)
+    find_library(APPKIT_LIBRARY AppKit REQUIRED)
+    target_link_libraries(pexninja PRIVATE
+        ${COREGRAPHICS_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${APPKIT_LIBRARY})
+endif()
 
 # pexninja itself isn't -Werror, but the upstream code triggers a handful of
 # benign warnings on modern compilers — silence the most common ones so the
@@ -170,18 +186,21 @@ target_compile_options(pexninja PRIVATE
     -Wno-sign-compare
     -Wno-missing-field-initializers)
 
-# Same RPATH treatment as the main doppler target so libpexpulse.so resolves
-# without LD_LIBRARY_PATH for the direct dependency.
+# Same RPATH treatment as the main doppler target so libpexpulse resolves
+# without LD_LIBRARY_PATH for the direct dependency. We use the directory the
+# library was actually found in (PEXPULSE_LIBDIR) rather than a hardcoded
+# <prefix>/lib, so it also works on macOS where the dylibs ship under macOs/.
 set_target_properties(pexninja PROPERTIES
-    BUILD_RPATH   "${PEXIP_PREFIX}/lib"
-    INSTALL_RPATH "${PEXIP_PREFIX}/lib")
+    BUILD_RPATH   "${PEXPULSE_LIBDIR}"
+    INSTALL_RPATH "${PEXPULSE_LIBDIR}")
 
 # Convenience launcher (mirrors run-doppler.sh) so the transitive Pulse
-# siblings under /opt/pexip/lib are found at runtime.
+# siblings are found at runtime.
 file(GENERATE
     OUTPUT  "${CMAKE_BINARY_DIR}/run-pexninja.sh"
     CONTENT "#!/bin/sh
-export LD_LIBRARY_PATH=\"${PEXIP_PREFIX}/lib:\${LD_LIBRARY_PATH}\"
+export LD_LIBRARY_PATH=\"${PEXPULSE_LIBDIR}:\${LD_LIBRARY_PATH}\"
+export DYLD_LIBRARY_PATH=\"${PEXPULSE_LIBDIR}:\${DYLD_LIBRARY_PATH}\"
 exec \"$<TARGET_FILE:pexninja>\" \"$@\"
 "
     FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
