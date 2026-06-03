@@ -34,20 +34,33 @@ find_package(Threads REQUIRED)
 # The .deb packages install Pulse to /opt/pexip (not the usual /usr prefix),
 # so we look there first.  We don't rely on pkg-config since the .deb does
 # not ship a .pc file.
+#
+# On macOS the Pulse dylibs (libpexpulse.dylib + libpexlgpl.dylib) ship in the
+# repo's macOs/ folder instead of an installed /opt/pexip prefix, while the
+# headers are shared from opt/pexip/include — so we add those repo-relative
+# locations to the search hints as well.
 set(PEXIP_PREFIX "/opt/pexip" CACHE PATH "Install prefix of the Pexip Pulse package")
 
 find_path(PEXPULSE_INCLUDE_DIR
     NAMES pexpulse/pulse.h
     HINTS "${PEXIP_PREFIX}/include"
+          "${CMAKE_CURRENT_SOURCE_DIR}/opt/pexip/include"
     REQUIRED)
 
 find_library(PEXPULSE_LIBRARY
     NAMES pexpulse
     HINTS "${PEXIP_PREFIX}/lib"
+          "${CMAKE_CURRENT_SOURCE_DIR}/macOs"
     REQUIRED)
 
 message(STATUS "Found pexpulse headers: ${PEXPULSE_INCLUDE_DIR}")
 message(STATUS "Found pexpulse library: ${PEXPULSE_LIBRARY}")
+
+# Directory that actually holds the Pulse library + its private siblings; used
+# below to bake an RPATH so binaries resolve them without LD_LIBRARY_PATH /
+# DYLD_LIBRARY_PATH. This works whether Pulse came from /opt/pexip/lib (Linux)
+# or the repo's macOs/ folder (macOS).
+get_filename_component(PEXPULSE_LIBDIR "${PEXPULSE_LIBRARY}" DIRECTORY)
 
 # Expose Pulse as a clean imported target so the application target stays
 # tidy.  We also bake the Pulse lib directory into the RPATH so the

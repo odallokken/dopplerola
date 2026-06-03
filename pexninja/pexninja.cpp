@@ -45,14 +45,18 @@
 #include <GL/gl3w.h>
 #include <GLFW/glfw3.h>
 
-#include <glib.h>
-#include <gst/gst.h>
-
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdarg>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <ctime>
+#include <deque>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <list>
@@ -65,6 +69,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <cassert>
 #include <inttypes.h>
 #include <pexpulse/pulse.h>
 
@@ -74,8 +79,118 @@
 
 using namespace std::chrono_literals;
 
-GST_DEBUG_CATEGORY_STATIC (pexninja_debug);
-#define GST_CAT_DEFAULT pexninja_debug
+/* ---------------------------------------------------------------------------
+ * Native helpers (formerly GLib / GStreamer)
+ *
+ * pexninja was lifted from a codebase that used GLib + GStreamer. The Pexip
+ * Pulse library (libpexlgpl) statically embeds its own copies of both, which
+ * collide at runtime with the system copies if we also link those. pexninja
+ * only used GStreamer for debug logging and GLib for a few small utilities, so
+ * rather than depend on (or re-implement) those libraries we use plain C++/
+ * POSIX here: logging goes straight to stdout/stderr and the handful of helper
+ * functions below cover the rest.
+ * ------------------------------------------------------------------------ */
+
+/* Debug logging — replaces the GStreamer GST_* debug categories. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__ ((format (printf, 2, 3)))
+#endif
+static inline void
+pexninja_log (const char * level, const char * fmt, ...)
+{
+  /* Errors/warnings to stderr, everything else to stdout. */
+  FILE * stream = (level[0] == 'E' || level[0] == 'W') ? stderr : stdout;
+  fprintf (stream, "%s ", level);
+  va_list args;
+  va_start (args, fmt);
+  vfprintf (stream, fmt, args);
+  va_end (args);
+  fputc ('\n', stream);
+}
+
+#define PEX_LOG_ERROR(...) pexninja_log ("ERROR  ", __VA_ARGS__)
+#define PEX_LOG_WARNING(...) pexninja_log ("WARNING", __VA_ARGS__)
+#define PEX_LOG_INFO(...) pexninja_log ("INFO   ", __VA_ARGS__)
+#define PEX_LOG_DEBUG(...) pexninja_log ("DEBUG  ", __VA_ARGS__)
+
+/* Platform directory separator (was G_DIR_SEPARATOR_S). */
+#if defined(HOST_WINDOWS)
+#define PEX_DIR_SEPARATOR_S "\\"
+#else
+#define PEX_DIR_SEPARATOR_S "/"
+#endif
+
+/* NULL-safe prefix test (was pex_str_has_prefix). */
+static inline bool
+pex_str_has_prefix (const char * str, const char * prefix)
+{
+  if (str == nullptr || prefix == nullptr)
+    return false;
+  return strncmp (str, prefix, strlen (prefix)) == 0;
+}
+
+/* NULL-safe strcmp (was pex_strcmp0). */
+static inline int
+pex_strcmp0 (const char * a, const char * b)
+{
+  if (a == nullptr)
+    return b == nullptr ? 0 : -1;
+  if (b == nullptr)
+    return 1;
+  return strcmp (a, b);
+}
+
+/* Last occurrence of needle in haystack (was pex_strrstr). */
+static inline char *
+pex_strrstr (const char * haystack, const char * needle)
+{
+  if (haystack == nullptr || needle == nullptr)
+    return nullptr;
+  size_t needle_len = strlen (needle);
+  size_t haystack_len = strlen (haystack);
+  if (needle_len == 0)
+    return const_cast<char *> (haystack + haystack_len);
+  if (needle_len > haystack_len)
+    return nullptr;
+  for (const char * p = haystack + haystack_len - needle_len; p >= haystack; p--) {
+    if (strncmp (p, needle, needle_len) == 0)
+      return const_cast<char *> (p);
+  }
+  return nullptr;
+}
+
+/* Opaque per-thread token, only ever formatted as a pointer in log lines (was
+ * g_thread_self). */
+static inline void *
+pex_thread_self ()
+{
+  return (void *) (uintptr_t) std::hash<std::thread::id> () (std::this_thread::get_id ());
+}
+
+/* Atomic compare-and-exchange on an int-sized lvalue (was
+ * g_atomic_int_compare_and_exchange). The template lets it accept the small
+ * enum lvalues pexninja guards its popup state machine with. */
+template <typename T>
+static inline bool
+atomic_cas_int (T * atomic, int oldval, int newval)
+{
+  static_assert (sizeof (T) == sizeof (int), "atomic_cas_int expects an int-sized target");
+#if defined(_MSC_VER)
+  return _InterlockedCompareExchange (reinterpret_cast<volatile long *> (atomic), (long) newval, (long) oldval) ==
+         (long) oldval;
+#else
+  int expected = oldval;
+  return __atomic_compare_exchange_n (reinterpret_cast<int *> (atomic), &expected, newval, false, __ATOMIC_SEQ_CST,
+                                      __ATOMIC_SEQ_CST);
+#endif
+}
+
+/* Small thread-safe queue of audio levels (was a GLib GAsyncQueue). */
+struct AudioLevelQueue
+{
+  std::mutex mutex;
+  std::deque<unsigned int> items;
+};
 
 #define DEFAULT_TX_KBPS (3 * 1024)
 #define MAX_TX_KBPS (10 * 1024)
@@ -131,7 +246,7 @@ const int audio_levels_window_size = 25;
 static void
 glfw_error_callback (int error, const char * description)
 {
-  GST_ERROR ("GLFW ERROR %d: %s\n", error, description);
+  PEX_LOG_ERROR ("GLFW ERROR %d: %s\n", error, description);
 }
 
 typedef enum
@@ -590,7 +705,7 @@ struct PexNinjaState
 
   PulseMediaRotation rotation;
 
-  GAsyncQueue * mic_audio_levels;
+  AudioLevelQueue * mic_audio_levels;
 
   const char * error_msg;
 
@@ -1148,12 +1263,12 @@ struct PexNinjaRoomRosterList
     , data (nullptr)
     , filtered_data (nullptr)
   {
-    GST_DEBUG ("INITIALIZE PexNinjaRoomRosterList");
+    PEX_LOG_DEBUG ("INITIALIZE PexNinjaRoomRosterList");
   }
 
   ~PexNinjaRoomRosterList ()
   {
-    GST_DEBUG ("DESTROY PexNinjaRoomRosterList");
+    PEX_LOG_DEBUG ("DESTROY PexNinjaRoomRosterList");
     pulse_conference_control_free_participant_list (data);
     pulse_conference_control_free_participant_list (filtered_data);
   }
@@ -1241,13 +1356,13 @@ struct PexNinjaRoom
 
   PexNinjaRoom ()
   {
-    GST_DEBUG ("INITIALIZE PexNinjaRoom");
+    PEX_LOG_DEBUG ("INITIALIZE PexNinjaRoom");
     conference_status.set_guests_can_unmute = true;
   }
 
   ~PexNinjaRoom ()
   {
-    GST_DEBUG ("DESTROY PexNinjaRoom");
+    PEX_LOG_DEBUG ("DESTROY PexNinjaRoom");
     conference_status.set_guests_can_unmute = true;
   }
 };
@@ -1395,23 +1510,23 @@ static const char *
 get_config_file_name ()
 {
   const char * prefix = NULL;
-  const char * env_config_path = g_getenv ("CONFIG_PATH");
+  const char * env_config_path = getenv ("CONFIG_PATH");
   if (env_config_path) {
     return env_config_path;
   }
 
   static char buffer[4092] = "pexninja-config.txt";
 #if defined(HOST_LINUX)
-  prefix = g_getenv ("HOME");
+  prefix = getenv ("HOME");
 #elif defined(HOST_WINDOWS)
-  prefix = g_getenv ("LOCALAPPDATA");
+  prefix = getenv ("LOCALAPPDATA");
 #endif
 
   if (prefix) {
-    snprintf (buffer, 4092, "%s%spexninja-config.txt", prefix, G_DIR_SEPARATOR_S);
+    snprintf (buffer, 4092, "%s%spexninja-config.txt", prefix, PEX_DIR_SEPARATOR_S);
   }
 
-  GST_INFO ("Using config file: %s", buffer);
+  PEX_LOG_INFO ("Using config file: %s", buffer);
 
   return buffer;
 }
@@ -1447,11 +1562,11 @@ read_config (const char * config_file, PexNinjaConfig * config)
   assert (config);
   std::ifstream ifs (config_file);
   if (!ifs.good ()) {
-    GST_DEBUG ("No config file found at '%s', set default values.\n", config_file);
+    PEX_LOG_DEBUG ("No config file found at '%s', set default values.\n", config_file);
     default_config (config);
     return 0;
   }
-  GST_DEBUG ("Reading configuration from file '%s'\n", config_file);
+  PEX_LOG_DEBUG ("Reading configuration from file '%s'\n", config_file);
 
   for (;;) {
     std::string line;
@@ -1466,7 +1581,7 @@ read_config (const char * config_file, PexNinjaConfig * config)
     std::getline (iss, value);
 
     if (key.length () == 0) {
-      GST_DEBUG ("Unparsable config line: '%s'\n", line.c_str ());
+      PEX_LOG_DEBUG ("Unparsable config line: '%s'\n", line.c_str ());
       break;
     }
 
@@ -1684,12 +1799,12 @@ read_config (const char * config_file, PexNinjaConfig * config)
       continue;
     }
 
-    GST_DEBUG ("Unknown config key: '%s'\n", key.c_str ());
+    PEX_LOG_DEBUG ("Unknown config key: '%s'\n", key.c_str ());
   }
 
   int err = 0;
   if (!ifs.eof ()) {
-    GST_DEBUG ("Failed to read config file to EOF!\n");
+    PEX_LOG_DEBUG ("Failed to read config file to EOF!\n");
     err = 1;
   }
   ifs.close ();
@@ -1704,7 +1819,7 @@ write_config (const char * config_file, PexNinjaConfig * config)
 
   std::ofstream ofs (config_file, std::ios::out | std::ios::trunc);
   if (!ofs.good ()) {
-    GST_DEBUG ("Unable to open ouputfile '%s' for writing\n", config_file);
+    PEX_LOG_DEBUG ("Unable to open ouputfile '%s' for writing\n", config_file);
     return 1;
   }
 
@@ -1768,7 +1883,7 @@ write_config (const char * config_file, PexNinjaConfig * config)
 
   ofs.close ();
 
-  GST_DEBUG ("Successfully updated configuration file '%s'\n", config_file);
+  PEX_LOG_DEBUG ("Successfully updated configuration file '%s'\n", config_file);
 
   return 0;
 }
@@ -1853,7 +1968,7 @@ _configure_proxy_server (PexNinja * application)
     err = pulse_options_set_proxy_server (application->client, NULL);
   }
   if (err != PULSE_SUCCESS) {
-    GST_ERROR ("Failed to configure proxy server: %s", pulse_strerror (err));
+    PEX_LOG_ERROR ("Failed to configure proxy server: %s", pulse_strerror (err));
   }
 }
 
@@ -1885,7 +2000,7 @@ _progress_callback_conference (const PulseOperationProgressInfo * progress_info,
   else
     _update_conference_status_msg (application, progress_info->desc);
 
-  GST_DEBUG ("PROGESS: '%s'", progress_info->desc);
+  PEX_LOG_DEBUG ("PROGESS: '%s'", progress_info->desc);
 }
 
 static void
@@ -1902,7 +2017,7 @@ _progress_callback_registration (const PulseOperationProgressInfo * progress_inf
   else
     _update_registration_status_msg (application, progress_info->desc);
 
-  GST_DEBUG ("PROGESS: '%s'", progress_info->desc);
+  PEX_LOG_DEBUG ("PROGESS: '%s'", progress_info->desc);
 }
 
 static int
@@ -1936,37 +2051,30 @@ _sso_selection_callback_complete (PexNinja * application, int chosen_index, bool
 
 #ifdef HOST_WINDOWS
 static void
-_pulse_gst_debug_fprintf (FILE * file, const gchar * format, ...)
+_pulse_native_debug_fprintf (FILE * file, const char * format, ...)
 {
   va_list args;
-  gchar * str = NULL;
-  gint length;
-
   va_start (args, format);
-  length = gst_info_vasprintf (&str, format, args);
+  va_list args_copy;
+  va_copy (args_copy, args);
+  int length = vsnprintf (nullptr, 0, format, args);
   va_end (args);
-
-  if (length == 0 || !str)
+  if (length <= 0) {
+    va_end (args_copy);
     return;
-
-  /* Even if it's valid UTF-8 string, console might print broken string
-   * depending on codepage and the content of the given string.
-   * Fortunately, g_print* family will take care of the Windows' codepage
-   * specific behavior.
-   */
-  if (file == stderr) {
-    g_printerr ("%s", str);
-  } else if (file == stdout) {
-    g_print ("%s", str);
-  } else {
-    /* We are writing to file. Text editors/viewers should be able to
-     * decode valid UTF-8 string regardless of codepage setting */
-    fwrite (str, 1, length, file);
-
-    /* FIXME: fflush here might be redundant if setvbuf works as expected */
-    fflush (file);
   }
-  g_free (str);
+
+  char * str = (char *) malloc ((size_t) length + 1);
+  if (!str) {
+    va_end (args_copy);
+    return;
+  }
+  vsnprintf (str, (size_t) length + 1, format, args_copy);
+  va_end (args_copy);
+
+  fwrite (str, 1, (size_t) length, file);
+  fflush (file);
+  free (str);
 }
 
 static bool
@@ -1979,8 +2087,8 @@ _sso_request_callback (PulseSSOProviderRequest * request, PulseSSOProviderSetTok
   assert (user_context);
 
   if (!request->url) {
-    GST_ERROR ("No SSO request URL given!");
-    return FALSE;
+    PEX_LOG_ERROR ("No SSO request URL given!");
+    return false;
   }
 
   /* create the IPC handle */
@@ -2003,28 +2111,30 @@ _sso_request_callback (PulseSSOProviderRequest * request, PulseSSOProviderSetTok
 
 /* copied from PULSE */
 static char *
-_pexninja_extract_sso_token (const gchar * token_arg)
+_pexninja_extract_sso_token (const char * token_arg)
 {
-  g_assert (token_arg);
-  g_assert (g_str_has_prefix (token_arg, "pexip-auth://"));
+  assert (token_arg);
+  assert (pex_str_has_prefix (token_arg, "pexip-auth://"));
   printf ("DEBUG: Attempting to extract token arg: %s\n", token_arg);
 
-  gchar ** token_arg_parts = g_strsplit (token_arg, "=", 2);
-  if (g_strv_length (token_arg_parts) < 2) {
+  /* Split on the first '=' into method and value. */
+  const char * eq = strchr (token_arg, '=');
+  if (eq == NULL) {
     printf ("ERROR: Failed to parse token arg, could not find '=' separator to split on.\n");
-    g_strfreev (token_arg_parts);
     return NULL;
   }
 
-  gchar * token = NULL;
-  if (g_strrstr (token_arg_parts[0], "saml") == NULL || g_strrstr (token_arg_parts[0], "token") == NULL) {
-    printf ("ERROR: Failed to parse token arg, unexpected method %s.\n", token_arg_parts[0]);
+  std::string method (token_arg, (size_t) (eq - token_arg));
+  const char * value = eq + 1;
+
+  char * token = NULL;
+  if (method.find ("saml") == std::string::npos || method.find ("token") == std::string::npos) {
+    printf ("ERROR: Failed to parse token arg, unexpected method %s.\n", method.c_str ());
   } else {
-    token = g_strdup (token_arg_parts[1]);
+    token = strdup (value);
     printf ("DEBUG: Token: %s\n", token);
   }
 
-  g_strfreev (token_arg_parts);
   return token;
 }
 
@@ -2107,62 +2217,46 @@ _pexninja_deregister_app_url_handler ()
 
 static void
 _logger_callback (void * user_context, PulseDebugLevel level, const char * category, int64_t wall_time_us,
-                  G_GNUC_UNUSED int64_t elapsed_nano, unsigned int pid, const char * file, const char * function,
+                  [[maybe_unused]] int64_t elapsed_nano, unsigned int pid, const char * file, const char * function,
                   int line, const char * object_debug_str, const char * message)
 {
   FILE * log_file = user_context ? (FILE *)user_context : stdout;
 
 #define CAT_FMT "%20s %s:%d:%s:%s"
-#define CAT_FMT_ID "%20s %s:%d:%s:%s"
-#if defined(GLIB_SIZEOF_VOID_P) && GLIB_SIZEOF_VOID_P == 8
 #define PTR_FMT "%14p"
-#else
-#define PTR_FMT "%10p"
-#endif
 
 #ifdef HOST_WINDOWS
-#define FPRINTF_DEBUG _pulse_gst_debug_fprintf
+#define FPRINTF_DEBUG _pulse_native_debug_fprintf
 #define FFLUSH_DEBUG(f) ((void)(f))
 #else
 #define FPRINTF_DEBUG fprintf
-#define FFLUSH_DEBUG(f)                                                                                                \
-  G_STMT_START                                                                                                         \
-  {                                                                                                                    \
-    fflush (f);                                                                                                        \
-  }                                                                                                                    \
-  G_STMT_END
+#define FFLUSH_DEBUG(f) fflush (f)
 #endif
 
 #define PRINT_FORMAT "02d:%02d:%02d.%06d %5u " PTR_FMT " %s " CAT_FMT " %s\n"
-#define PRINT_FORMAT_ID "02d:%02d:%02d.%06d %5u " PTR_FMT " %s " CAT_FMT_ID " %s\n"
 
-  /* Using g_date_time_new_from_timeval_utc() seems like the better choice here, but unfortunately its deprecated. */
-  GDateTime * ts_wall_time_no_us = g_date_time_new_from_unix_local (wall_time_us / G_USEC_PER_SEC);
-  GDateTime * ts_wall_time = g_date_time_add (ts_wall_time_no_us, wall_time_us % G_USEC_PER_SEC);
-  g_date_time_unref (ts_wall_time_no_us);
+  /* Break the microsecond wall-clock timestamp down into local time. */
+  time_t secs = (time_t) (wall_time_us / 1000000);
+  int microseconds = (int) (wall_time_us % 1000000);
+  struct tm tm_local;
+#if defined(HOST_WINDOWS)
+  localtime_s (&tm_local, &secs);
+#else
+  localtime_r (&secs, &tm_local);
+#endif
 
   /* no color, all platforms */
-  if (object_debug_str) {
-    FPRINTF_DEBUG (
-      log_file, "%" PRINT_FORMAT_ID, g_date_time_get_hour (ts_wall_time), g_date_time_get_minute (ts_wall_time),
-      g_date_time_get_second (ts_wall_time), g_date_time_get_microsecond (ts_wall_time), pid, g_thread_self (),
-      pulse_type_mapping_debug_level_to_string (level), category, file, line, function, object_debug_str, message);
-  } else {
-    FPRINTF_DEBUG (log_file, "%" PRINT_FORMAT, g_date_time_get_hour (ts_wall_time),
-                   g_date_time_get_minute (ts_wall_time), g_date_time_get_second (ts_wall_time),
-                   g_date_time_get_microsecond (ts_wall_time), pid, g_thread_self (),
-                   pulse_type_mapping_debug_level_to_string (level), category, file, line, function, "", message);
-  }
+  FPRINTF_DEBUG (log_file, "%" PRINT_FORMAT, tm_local.tm_hour, tm_local.tm_min, tm_local.tm_sec, microseconds, pid,
+                 pex_thread_self (), pulse_type_mapping_debug_level_to_string (level), category, file, line, function,
+                 object_debug_str ? object_debug_str : "", message);
   FFLUSH_DEBUG (log_file);
-
-  g_date_time_unref (ts_wall_time);
 }
 
 static int
 _pexninja_storage_set_callback (const char * key, const char * value, void * user_context)
 {
-  g_assert (key);
-  g_assert (user_context);
+  assert (key);
+  assert (user_context);
   PexNinja * application = (PexNinja *)user_context;
 
   /* These is a very quick and dirty implementation solely for testig that this feature works.
@@ -2170,15 +2264,15 @@ _pexninja_storage_set_callback (const char * key, const char * value, void * use
   */
 
   char * ptr = NULL;
-  if (g_str_has_prefix (key, "reg/auth_key/"))
+  if (pex_str_has_prefix (key, "reg/auth_key/"))
     ptr = application->config.auth_token;
-  else if (g_str_has_prefix (key, "reg/display_name/"))
+  else if (pex_str_has_prefix (key, "reg/display_name/"))
     ptr = application->config.display_name;
-  else if (g_str_has_prefix (key, "reg/exchange_token_failure_count/"))
+  else if (pex_str_has_prefix (key, "reg/exchange_token_failure_count/"))
     ptr = application->config.exchange_token_failure_count;
   if (ptr == NULL) {
-    GST_ERROR ("Unhandled key prefix: %s", key);
-    g_assert_not_reached ();
+    PEX_LOG_ERROR ("Unhandled key prefix: %s", key);
+    assert (false);
   }
 
   int ret = 0;
@@ -2198,8 +2292,8 @@ _pexninja_storage_set_callback (const char * key, const char * value, void * use
 static int
 _pexninja_storage_get_callback (const char * key, char * buf, int buf_len, void * user_context)
 {
-  g_assert (key);
-  g_assert (user_context);
+  assert (key);
+  assert (user_context);
   PexNinja * application = (PexNinja *)user_context;
 
   /* These is a very quick and dirty implementation solely for testig that this feature works.
@@ -2207,15 +2301,15 @@ _pexninja_storage_get_callback (const char * key, char * buf, int buf_len, void 
   */
 
   char * ptr = NULL;
-  if (g_str_has_prefix (key, "reg/auth_key/"))
+  if (pex_str_has_prefix (key, "reg/auth_key/"))
     ptr = application->config.auth_token;
-  else if (g_str_has_prefix (key, "reg/display_name/"))
+  else if (pex_str_has_prefix (key, "reg/display_name/"))
     ptr = application->config.display_name;
-  else if (g_str_has_prefix (key, "reg/exchange_token_failure_count/"))
+  else if (pex_str_has_prefix (key, "reg/exchange_token_failure_count/"))
     ptr = application->config.exchange_token_failure_count;
   if (ptr == NULL) {
-    GST_ERROR ("Unhandled key prefix: %s", key);
-    g_assert_not_reached ();
+    PEX_LOG_ERROR ("Unhandled key prefix: %s", key);
+    assert (false);
   }
 
   int ret = 0; // Signal not found
@@ -2237,8 +2331,8 @@ _pexninja_storage_get_callback (const char * key, char * buf, int buf_len, void 
 static bool
 _version_callback (uint64_t server_major_version, uint64_t server_minor_version, void * user_context)
 {
-  g_assert (user_context);
-  GST_INFO ("Pulse reports that we're connecting to a server with version (%" G_GUINT64_FORMAT ".%" G_GUINT64_FORMAT
+  assert (user_context);
+  PEX_LOG_INFO ("Pulse reports that we're connecting to a server with version (%" PRIu64 ".%" PRIu64
             ").",
             server_major_version, server_minor_version);
   return true;
@@ -2260,12 +2354,12 @@ _conference_status_info_callback (const PulseConferenceStatusInfo * status_info,
   application->state.current_service_type = status_info->current_service_type;
 
   if (status_info->status == PULSE_CONNECTION_STATUS_CONNECTED) {
-    GST_DEBUG ("CONFERENCE_STATE: '%s' blocked:%s, service_type:%s",
+    PEX_LOG_DEBUG ("CONFERENCE_STATE: '%s' blocked:%s, service_type:%s",
                pulse_type_mapping_connection_status_to_string (status_info->status),
                status_info->is_blocked ? "true" : "false",
                pulse_type_mapping_service_type_to_string (status_info->current_service_type));
   } else {
-    GST_DEBUG ("CONFERENCE_STATE: '%s' blocked:%s service_type:(n/a)",
+    PEX_LOG_DEBUG ("CONFERENCE_STATE: '%s' blocked:%s service_type:(n/a)",
                pulse_type_mapping_connection_status_to_string (status_info->status),
                status_info->is_blocked ? "true" : "false");
   }
@@ -2287,14 +2381,14 @@ _registration_status_info_callback (const PulseRegistrationStatusInfo * status_i
   assert (status_info);
   assert (user_context);
   PexNinja * application = (PexNinja *)user_context;
-  g_assert (application);
+  assert (application);
 
   application->state.reg_status = status_info->status;
   if (status_info->status == PULSE_CONNECTION_STATUS_RECONNECTING && status_info->next_reconnect_secs > 0) {
-    GST_DEBUG ("REGISTRATION_STATE: '%s' next reconnect in %" G_GUINT64_FORMAT " seconds",
+    PEX_LOG_DEBUG ("REGISTRATION_STATE: '%s' next reconnect in %" PRIu64 " seconds",
                pulse_type_mapping_connection_status_to_string (status_info->status), status_info->next_reconnect_secs);
   } else {
-    GST_DEBUG ("REGISTRATION_STATE: '%s'", pulse_type_mapping_connection_status_to_string (status_info->status));
+    PEX_LOG_DEBUG ("REGISTRATION_STATE: '%s'", pulse_type_mapping_connection_status_to_string (status_info->status));
   }
 
   const char * reconnecting_msg = "Attempting to reconnect to the registration server";
@@ -2314,24 +2408,24 @@ _network_status_info_callback (const PulseNetworkStatusInfo * status_info, void 
   assert (status_info);
   assert (user_context);
   PexNinja * application = (PexNinja *)user_context;
-  g_assert (application);
+  assert (application);
 
   const char * ipv4_address = (status_info->has_ipv4_address ? status_info->ipv4_address : "<unconfigured>");
   const char * ipv6_address = (status_info->has_ipv6_address ? status_info->ipv6_address : "<unconfigured>");
 
-  GST_DEBUG ("Got networkstatusinfo cb, state:%d (%s) metered:%d routing:%d dns:%d ip4:%s ip6:%s",
+  PEX_LOG_DEBUG ("Got networkstatusinfo cb, state:%d (%s) metered:%d routing:%d dns:%d ip4:%s ip6:%s",
              status_info->connectivity, status_info->connectivity_desc, status_info->is_metered,
              status_info->routing_alive, status_info->dns_alive, ipv4_address, ipv6_address);
 
   memcpy (&application->state.network_status, status_info, sizeof (PulseNetworkStatusInfo));
 
   static const char * msg_curr = NULL;
-  gboolean msg_removed = cancel_alarm (application, msg_curr, 0);
+  bool msg_removed = cancel_alarm (application, msg_curr, 0);
   msg_curr = NULL;
 
   ImVec4 color = clear_color;
   uint32_t display_seconds = 5;
-  gboolean do_register_alarm = TRUE;
+  bool do_register_alarm = true;
 
   switch (status_info->connectivity) {
     case PULSE_NETWORK_CONNECTIVITY_UNKNOWN:
@@ -2388,7 +2482,7 @@ _audio_mute_state_changed_callback (bool client_mute_state, bool server_mute_sta
   PexNinja * application = (PexNinja *)user_context;
   (void)application;
 
-  GST_DEBUG ("Mute state change: client_muted:%s server_muted:%s", client_mute_state ? "true" : "false",
+  PEX_LOG_DEBUG ("Mute state change: client_muted:%s server_muted:%s", client_mute_state ? "true" : "false",
              server_mute_state ? "true" : "false");
 }
 
@@ -2479,7 +2573,7 @@ _conference_extension_request_callback (const PulseSetConferenceExtension * set_
       const char * conference_extension = (strlen (application->conference_extension_request.conference_extension) == 0)
                                             ? NULL
                                             : application->conference_extension_request.conference_extension;
-      if (set_conference_extension->func (set_conference_extension->context, conference_extension) == FALSE) {
+      if (set_conference_extension->func (set_conference_extension->context, conference_extension) == false) {
         // We attempted to set an invalid value!
         application->conference_extension_request.accept = false;
         application->conference_extension_request.popup_state = POPUP_STATE_QUEUED;
@@ -2499,7 +2593,7 @@ _registrations_event_incoming_async_result_callback (PulseError err, void * user
   } else {
     if (application->state.async_op.err != PULSE_ERROR_PROCESS_ABORTED)
       application->state.error_msg = pulse_strerror (err);
-    GST_DEBUG ("Incoming setup error: %s", pulse_strerror (err));
+    PEX_LOG_DEBUG ("Incoming setup error: %s", pulse_strerror (err));
   }
 
   application->state.wait = false;
@@ -2519,7 +2613,7 @@ _registrations_event_incoming_callback (const PulseRegistrationsEventIncoming * 
                                         PulseOperationProgressCallbackConfig * progress_callback_config)
 {
   assert (event);
-  GST_DEBUG ("INCOMING_CALLBACK: source_type:%d conference:%s remote_dn:%s local_alias:%s remote_alias:%s",
+  PEX_LOG_DEBUG ("INCOMING_CALLBACK: source_type:%d conference:%s remote_dn:%s local_alias:%s remote_alias:%s",
              event->source_type, event->conference_alias, event->remote_display_name, event->local_alias,
              event->remote_alias);
 
@@ -2553,7 +2647,7 @@ _registrations_event_incoming_cancelled_callback (const PulseRegistrationsEventI
                                                   void * user_context)
 {
   assert (event);
-  GST_DEBUG ("INCOMING_CANCELLED_CALLBACK: source_type:%d conference:%s remote_dn:%s local_alias:%s "
+  PEX_LOG_DEBUG ("INCOMING_CANCELLED_CALLBACK: source_type:%d conference:%s remote_dn:%s local_alias:%s "
              "remote_alias:%s\n",
              event->source_type, event->conference_alias, event->remote_display_name, event->local_alias,
              event->remote_alias);
@@ -2572,7 +2666,7 @@ _server_event_conference_update_callback (PulseRoomId room_id, const PulseConfer
 
   PexNinjaRoom * room = application->room_list.room_map[room_id];
   if (room == nullptr) {
-    GST_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
+    PEX_LOG_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
     return;
   }
 
@@ -2675,7 +2769,7 @@ _server_event_conference_update_callback (PulseRoomId room_id, const PulseConfer
   }
 
   ss << std::endl;
-  GST_DEBUG ("%s", ss.str ().c_str ());
+  PEX_LOG_DEBUG ("%s", ss.str ().c_str ());
 }
 
 static void
@@ -2689,7 +2783,7 @@ _server_event_participant_update_callback (PulseRoomId room_id, PulseConferenceE
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
   if (room == nullptr) {
-    GST_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
+    PEX_LOG_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
     return;
   }
 
@@ -2710,7 +2804,7 @@ _server_event_participant_update_callback (PulseRoomId room_id, PulseConferenceE
   // Find number of active participants in this room.
   uint32_t active_participants = 0;
   for (int i = 0; i < (int)list->participant_list_size; i++) {
-    if (list->participant_list[i]->is_active_participant == FALSE)
+    if (list->participant_list[i]->is_active_participant == false)
       continue;
     active_participants++;
   }
@@ -2718,18 +2812,18 @@ _server_event_participant_update_callback (PulseRoomId room_id, PulseConferenceE
   // Update messaging recepient
   if (application->room_list.current_room &&
       application->room_list.current_room->chat_messages.selected_message_recepient_uuid) {
-    gboolean found = FALSE;
+    bool found = false;
     for (int i = 0; i < (int)list->participant_list_size; i++) {
-      if (g_strcmp0 (list->participant_list[i]->uuid,
+      if (pex_strcmp0 (list->participant_list[i]->uuid,
                      application->room_list.current_room->chat_messages.selected_message_recepient_uuid) == 0) {
-        found = TRUE;
+        found = true;
         application->room_list.current_room->chat_messages.selected_message_recepient_name =
           list->participant_list[i]->active_display_name;
         break;
       }
     }
     if (!found) {
-      g_free (application->room_list.current_room->chat_messages.selected_message_recepient_uuid);
+      free (application->room_list.current_room->chat_messages.selected_message_recepient_uuid);
       application->room_list.current_room->chat_messages.selected_message_recepient_uuid = NULL;
       application->room_list.current_room->chat_messages.selected_message_recepient_name = NULL;
     }
@@ -2738,7 +2832,7 @@ _server_event_participant_update_callback (PulseRoomId room_id, PulseConferenceE
   pulse_conference_control_free_participant_list (room->roster_list.data);
   room->roster_list.data = list;
   room->roster_list.active_participants = active_participants;
-  GST_DEBUG ("Updated rosterlist (serial:%d) for room %u with %u active participants (%d total participants)",
+  PEX_LOG_DEBUG ("Updated rosterlist (serial:%d) for room %u with %u active participants (%d total participants)",
              list->serial, room_id, active_participants, (int)list->participant_list_size);
 
   if (room->roster_list.filtered_data) {
@@ -2765,7 +2859,7 @@ _server_event_participant_create_callback (PulseRoomId room_id, const PulseConfe
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
   if (room == nullptr) {
-    GST_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
+    PEX_LOG_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
     return;
   }
   const char * display_name = NULL;
@@ -2799,7 +2893,7 @@ _server_event_participant_create_callback (PulseRoomId room_id, const PulseConfe
     room->chat_messages.concat_chat_messages =
       room->chat_messages.sync_join_messages + "\n" + room->chat_messages.chat_messages;
   }
-  GST_DEBUG ("Added join message for participant:%s in room %u", display_name, room_id);
+  PEX_LOG_DEBUG ("Added join message for participant:%s in room %u", display_name, room_id);
 }
 
 static void
@@ -2814,7 +2908,7 @@ _server_event_participant_delete_callback (PulseRoomId room_id, const PulseConfe
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
   if (room == nullptr) {
-    GST_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
+    PEX_LOG_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
     return;
   }
   const char * display_name = NULL;
@@ -2836,7 +2930,7 @@ _server_event_participant_delete_callback (PulseRoomId room_id, const PulseConfe
     room->chat_messages.concat_chat_messages =
       room->chat_messages.sync_join_messages + "\n" + room->chat_messages.chat_messages;
   }
-  GST_DEBUG ("Added leave message for participant:%s in room %u", display_name, room_id);
+  PEX_LOG_DEBUG ("Added leave message for participant:%s in room %u", display_name, room_id);
 }
 
 static void
@@ -2850,7 +2944,7 @@ _server_event_message_received_callback (PulseRoomId room_id, const PulseConfere
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
   if (room == nullptr) {
-    GST_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
+    PEX_LOG_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
     return;
   }
 
@@ -2866,7 +2960,7 @@ _server_event_message_received_callback (PulseRoomId room_id, const PulseConfere
   room->chat_messages.concat_chat_messages =
     room->chat_messages.sync_join_messages + "\n" + room->chat_messages.chat_messages;
   room->chat_messages.chat_messages_unread++;
-  GST_DEBUG ("Added chat message in room %u", room_id);
+  PEX_LOG_DEBUG ("Added chat message in room %u", room_id);
 }
 
 static void
@@ -2877,7 +2971,7 @@ _server_event_presentation_start_callback (PulseRoomId room_id, const PulseConfe
   (void)room_id;
   assert (user_context != NULL);
 
-  GST_DEBUG ("*** PRESENTATION START: name:'%s' uri:'%s' uuid:'%s'\n", event->presenter_name, event->presenter_uri,
+  PEX_LOG_DEBUG ("*** PRESENTATION START: name:'%s' uri:'%s' uuid:'%s'\n", event->presenter_name, event->presenter_uri,
              event->presenter_uuid);
 
   PexNinja * application = (PexNinja *)user_context;
@@ -2885,7 +2979,7 @@ _server_event_presentation_start_callback (PulseRoomId room_id, const PulseConfe
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
   if (room == nullptr) {
-    GST_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
+    PEX_LOG_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
     return;
   }
 
@@ -2901,14 +2995,14 @@ _server_event_presentation_stop_callback (PulseRoomId room_id, void * user_conte
   (void)room_id;
   assert (user_context != NULL);
 
-  GST_DEBUG ("*** PRESENTATION STOP\n");
+  PEX_LOG_DEBUG ("*** PRESENTATION STOP\n");
 
   PexNinja * application = (PexNinja *)user_context;
 
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
   if (room == nullptr) {
-    GST_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
+    PEX_LOG_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
     return;
   }
   room->presentation.preso_started = false;
@@ -2924,9 +3018,9 @@ _server_event_remote_disconnect_callback (const char * reason, void * user_conte
   application->disconnected.popup_state = POPUP_STATE_QUEUED;
 
   application->state.window_title = std::string ("PexNinja (Build " VERSION ")");
-  application->state.update_window_title = TRUE;
+  application->state.update_window_title = true;
 
-  GST_DEBUG ("*** REMOTE DISCONNECT: reason:'%s'\n", reason);
+  PEX_LOG_DEBUG ("*** REMOTE DISCONNECT: reason:'%s'\n", reason);
 }
 
 static void
@@ -2939,12 +3033,12 @@ _server_event_layout_callback (PulseRoomId room_id, const PulseConferenceEventLa
   application->state.layout.layout = event->layout;
   application->state.layout.enable_overlay_text = event->overlay_text_enabled;
 
-  GST_DEBUG ("*** LAYOUT:'%s' request_layout:[primary_screen:[chair:'%s' "
+  PEX_LOG_DEBUG ("*** LAYOUT:'%s' request_layout:[primary_screen:[chair:'%s' "
              "guest:'%s']] overlay_text_enabled:%s participants:%u\n",
              event->layout, event->requested_layout.primary_screen.chair, event->requested_layout.primary_screen.guest,
              event->overlay_text_enabled ? "true" : "false", event->participants_num);
   for (uint32_t i = 0; i < event->participants_num; i++) {
-    GST_DEBUG ("*** LAYOUT PARTICIPANT uuid:%s\n", event->participants[i]);
+    PEX_LOG_DEBUG ("*** LAYOUT PARTICIPANT uuid:%s\n", event->participants[i]);
   }
 }
 
@@ -2953,9 +3047,9 @@ _server_event_stage_callback (PulseRoomId room_id, const PulseConferenceEventSta
 {
   assert (user_context != NULL);
 
-  GST_DEBUG ("*** STAGE: room_id:%u speakers:%u\n", room_id, event->speakers_num);
+  PEX_LOG_DEBUG ("*** STAGE: room_id:%u speakers:%u\n", room_id, event->speakers_num);
   for (uint32_t i = 0; i < event->speakers_num; i++) {
-    GST_DEBUG ("*** STAGE stage_index:%u vad:%u participant_uuid:'%s'\n", event->speakers[i]->stage_index,
+    PEX_LOG_DEBUG ("*** STAGE stage_index:%u vad:%u participant_uuid:'%s'\n", event->speakers[i]->stage_index,
                event->speakers[i]->vad, event->speakers[i]->participant_uuid);
   }
 }
@@ -2964,7 +3058,7 @@ static void
 _server_event_live_captions_callback (PulseRoomId room_id, const PulseConferenceEventLiveCaptions * event,
                                       void * user_context)
 {
-  GST_DEBUG ("*** Live captions: room_id:%u '%s' [final:%s]\n", room_id, event->data,
+  PEX_LOG_DEBUG ("*** Live captions: room_id:%u '%s' [final:%s]\n", room_id, event->data,
              event->is_final ? "True" : "False");
 
   assert (user_context != NULL);
@@ -2973,7 +3067,7 @@ _server_event_live_captions_callback (PulseRoomId room_id, const PulseConference
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
   if (room == nullptr) {
-    GST_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
+    PEX_LOG_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
     return;
   }
 
@@ -2998,7 +3092,7 @@ _server_event_audio_mixer_list_callback (PulseRoomId room_id, PulseConferenceAud
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
   if (room == nullptr) {
-    GST_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
+    PEX_LOG_ERROR ("OH NOES, NO ROOM MATCHING %u", room_id);
     return;
   }
 
@@ -3020,7 +3114,7 @@ _server_event_breakout_room_pre_transfer_callback (PulseRoomId room_id, const ch
   for (int i = 15; i > 0; i--) {
     application->referal_request.timeout = i;
     if (application->referal_request.popup_state == POPUP_STATE_HIDDEN) {
-      GST_DEBUG ("Stopping countdown, user accepted");
+      PEX_LOG_DEBUG ("Stopping countdown, user accepted");
       break;
     }
 
@@ -3030,25 +3124,25 @@ _server_event_breakout_room_pre_transfer_callback (PulseRoomId room_id, const ch
       if (application->room_list.transfer_cancel_id == room_id) {
         application->room_list.transfer_cancel_id = (uint32_t)-1;
         application->referal_request.popup_state = POPUP_STATE_HIDDEN;
-        GST_ERROR ("Stopping coutdown, transfer was cancelled!");
+        PEX_LOG_ERROR ("Stopping coutdown, transfer was cancelled!");
         return;
       }
     }
-    g_usleep (G_USEC_PER_SEC);
+    std::this_thread::sleep_for (std::chrono::seconds (1));
   }
 
   application->referal_request.popup_state = POPUP_STATE_HIDDEN;
 
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
-  g_assert (room);
+  assert (room);
 
   // Call whatever function needed here, to inform aobut the imminent transfer.
 
   application->room_list.current_room_id = room_id;
   application->room_list.current_room = room;
 
-  GST_DEBUG ("*** _server_event_breakout_room_pre_transfer_callback: room_id:%u name:%s", room_id, breakout_room_name);
+  PEX_LOG_DEBUG ("*** _server_event_breakout_room_pre_transfer_callback: room_id:%u name:%s", room_id, breakout_room_name);
 }
 
 static void
@@ -3058,9 +3152,9 @@ _server_event_breakout_room_post_transfer_callback (PulseRoomId room_id, void * 
 
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
   PexNinjaRoom * room = application->room_list.room_map[room_id];
-  g_assert (room);
-  g_assert (application->room_list.current_room == room);
-  g_assert (application->room_list.current_room_id == room_id);
+  assert (room);
+  assert (application->room_list.current_room == room);
+  assert (application->room_list.current_room_id == room_id);
 
   PulseSessionInfo * info = NULL;
   if (pulse_session_get_conference_info (application->client, &info) == PULSE_SUCCESS) {
@@ -3072,9 +3166,9 @@ _server_event_breakout_room_post_transfer_callback (PulseRoomId room_id, void * 
     pulse_session_free_conference_info (info);
 
     application->state.window_title = ss.str ();
-    application->state.update_window_title = TRUE;
+    application->state.update_window_title = true;
   }
-  GST_DEBUG ("*** _server_event_breakout_room_post_transfer_callback: room_id:%u", room_id);
+  PEX_LOG_DEBUG ("*** _server_event_breakout_room_post_transfer_callback: room_id:%u", room_id);
 }
 
 static void
@@ -3087,20 +3181,20 @@ _server_event_breakout_room_transfer_cancelled_callback (PulseRoomId room_id, vo
   application->room_list.transfer_cancel_flagged = true;
   application->room_list.transfer_cancel_id = room_id;
 
-  GST_ERROR ("Transfer to room_id %u was cancelled!", room_id);
+  PEX_LOG_ERROR ("Transfer to room_id %u was cancelled!", room_id);
 }
 
 static void
 _server_event_breakout_room_created_callback (PulseRoomId room_id, void * user_context)
 {
-  GST_ERROR ("*** _server_event_breakout_room_created_callback: room_id:%u", room_id);
+  PEX_LOG_ERROR ("*** _server_event_breakout_room_created_callback: room_id:%u", room_id);
   PexNinja * application = (PexNinja *)user_context;
 
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
-  g_assert (application->room_list.room_map.count (room_id) == 0);
+  assert (application->room_list.room_map.count (room_id) == 0);
   application->room_list.room_map[room_id] = new PexNinjaRoom{};
 
-  GST_ERROR ("*** _server_event_breakout_room_created_callback: room_id:%u", room_id);
+  PEX_LOG_ERROR ("*** _server_event_breakout_room_created_callback: room_id:%u", room_id);
 }
 
 static void
@@ -3109,12 +3203,12 @@ _server_event_breakout_room_destroyed_callback (PulseRoomId room_id, void * user
   PexNinja * application = (PexNinja *)user_context;
 
   std::lock_guard<std::mutex> lock (application->room_list.mutex);
-  g_assert (application->room_list.room_map.count (room_id) == 1);
+  assert (application->room_list.room_map.count (room_id) == 1);
 
   delete application->room_list.room_map[room_id];
   application->room_list.room_map.erase (room_id);
 
-  GST_ERROR ("*** _server_event_breakout_room_destroyed_callback: room_id:%u", room_id);
+  PEX_LOG_ERROR ("*** _server_event_breakout_room_destroyed_callback: room_id:%u", room_id);
 }
 
 static void
@@ -3123,7 +3217,7 @@ _server_event_fecc_callback (PulseRoomId room_id, const PulseConferenceEventFecc
   (void)room_id;
   PexNinja * application = (PexNinja *)user_context;
 
-  GST_ERROR (" Got FECC action:%u movement:%u timeout_ms:%u", event->action, event->movement_direction_mask,
+  PEX_LOG_ERROR (" Got FECC action:%u movement:%u timeout_ms:%u", event->action, event->movement_direction_mask,
              event->timeout_ms);
 
   if (application->config.options.use_pulse_internal_ptz) {
@@ -3222,8 +3316,8 @@ on_devices_changed (PulseMediaType media_type, void * user_context)
 static void
 _window_resize_callback (GLFWwindow * window, int width, int height)
 {
-  g_assert (window);
-  GST_DEBUG ("Window resized to %dx%d", width, height);
+  assert (window);
+  PEX_LOG_DEBUG ("Window resized to %dx%d", width, height);
 
   if (g_glfw_app_context) {
     g_glfw_app_context->state.windows.width = width;
@@ -3241,7 +3335,7 @@ create_window (PexNinja * application)
 
   glfwSetErrorCallback (glfw_error_callback);
   if (!glfwInit ()) {
-    GST_ERROR ("Unable to initialize GLFW");
+    PEX_LOG_ERROR ("Unable to initialize GLFW");
     exit (EXIT_FAILURE);
   }
 
@@ -3260,7 +3354,7 @@ create_window (PexNinja * application)
   window = glfwCreateWindow (application->state.windows.width, application->state.windows.height,
                              "PexNinja (Build " VERSION ")", NULL, NULL);
   if (window == NULL) {
-    GST_ERROR ("Unable to create Window\n");
+    PEX_LOG_ERROR ("Unable to create Window\n");
     exit (EXIT_FAILURE);
   }
 
@@ -3271,7 +3365,7 @@ create_window (PexNinja * application)
 
   // Initialize OpenGL loader
   if (gl3wInit () != 0) {
-    GST_ERROR ("Failed to initialize OpenGL loader\n");
+    PEX_LOG_ERROR ("Failed to initialize OpenGL loader\n");
     exit (EXIT_FAILURE);
   }
   glEnable (GL_DEPTH_TEST);
@@ -3321,7 +3415,7 @@ render_gl_ctx_image (Pulse * client, GLTextureContext * ctx)
     pulse_data_session_frame_data_free (frame);
   } else {
     (void)err;
-    // GST_DEBUG ("Error fetching data failed, err:%s frame:%p\n", pulse_strerror (err),
+    // PEX_LOG_DEBUG ("Error fetching data failed, err:%s frame:%p\n", pulse_strerror (err),
     // frame);
   }
 
@@ -3347,7 +3441,7 @@ render_gl_ctx_background (Pulse * client, GLTextureContext * ctx, int w, int h)
 
   } else {
     (void)err;
-    // GST_ERROR ("Error fetching data failed, err:%s frame:%p", pulse_strerror (err),
+    // PEX_LOG_ERROR ("Error fetching data failed, err:%s frame:%p", pulse_strerror (err),
     // frame);
   }
 
@@ -3381,19 +3475,19 @@ get_pulse_device_display_name (void * data, int n, const char ** out_str)
   return true;
 }
 
-static gfloat
+static float
 _lerp (float a, float b, float t)
 {
   return (1.0f - t) * a + b * t;
 }
 
-static gfloat
+static float
 _inv_lerp (float a, float b, float v)
 {
   return (v - a) / (b - a);
 }
 
-static gfloat
+static float
 _remap (float imin, float imax, float omin, float omax, float v)
 {
   float t = _inv_lerp (imin, imax, v);
@@ -3406,7 +3500,14 @@ render_microphone_audio_levels (PexNinja * application)
   const float mindb = -127.f;
   const float maxdb = 0.f;
 
-  guint dbi = GPOINTER_TO_UINT (g_async_queue_try_pop (application->state.mic_audio_levels));
+  unsigned int dbi = 0;
+  {
+    std::lock_guard<std::mutex> lock (application->state.mic_audio_levels->mutex);
+    if (!application->state.mic_audio_levels->items.empty ()) {
+      dbi = application->state.mic_audio_levels->items.front ();
+      application->state.mic_audio_levels->items.pop_front ();
+    }
+  }
   float dbf = dbi != 0 ? (float)dbi * -1.f : mindb;
   float v = _inv_lerp (mindb, maxdb, dbf);
 
@@ -3622,7 +3723,7 @@ handle_async_operation (PexNinja * application)
     application->state.abort = false;
     if (application->state.async_op.op == ASYNC_OP_CONNECT) {
       if (application->state.async_op.err != PULSE_SUCCESS) {
-        GST_DEBUG ("pulse_connect_with_rest failed: %s\n", pulse_strerror (application->state.async_op.err));
+        PEX_LOG_DEBUG ("pulse_connect_with_rest failed: %s\n", pulse_strerror (application->state.async_op.err));
         _update_conference_status_msg (application, "Failed to connect");
         if (application->state.async_op.err != PULSE_ERROR_PROCESS_ABORTED)
           application->state.error_msg = pulse_strerror (application->state.async_op.err);
@@ -3644,7 +3745,7 @@ handle_async_operation (PexNinja * application)
       }
     } else if (application->state.async_op.op == ASYNC_OP_DISCONNECT) {
       if (application->state.async_op.err != PULSE_SUCCESS) {
-        GST_DEBUG ("pulse_disconnect failed: %s\n", pulse_strerror (application->state.async_op.err));
+        PEX_LOG_DEBUG ("pulse_disconnect failed: %s\n", pulse_strerror (application->state.async_op.err));
         _update_conference_status_msg (application, "Failed to disconnect");
         if (application->state.async_op.err != PULSE_ERROR_PROCESS_ABORTED)
           application->state.error_msg = pulse_strerror (application->state.async_op.err);
@@ -3653,18 +3754,18 @@ handle_async_operation (PexNinja * application)
 
       std::lock_guard<std::mutex> lock (application->room_list.mutex);
       for (auto it = application->room_list.room_map.begin (); it != application->room_list.room_map.end (); it++) {
-        GST_ERROR ("Deleting room %u", it->first);
+        PEX_LOG_ERROR ("Deleting room %u", it->first);
         delete it->second;
       }
       application->room_list.room_map.clear ();
-      g_assert (application->room_list.room_map.size () == 0);
+      assert (application->room_list.room_map.size () == 0);
       // Recreate main room.
       application->room_list.current_room_id = PULSE_ROOM_ID_MAIN;
       application->room_list.current_room = new PexNinjaRoom{};
       application->room_list.room_map[PULSE_ROOM_ID_MAIN] = application->room_list.current_room;
     } else if (application->state.async_op.op == ASYNC_OP_REGISTER) {
       if (application->state.async_op.err != PULSE_SUCCESS) {
-        GST_DEBUG ("pulse_register failed: %s\n", pulse_strerror (application->state.async_op.err));
+        PEX_LOG_DEBUG ("pulse_register failed: %s\n", pulse_strerror (application->state.async_op.err));
         _update_registration_status_msg (application, "Failed to register");
         if (application->state.async_op.err != PULSE_ERROR_PROCESS_ABORTED)
           application->state.error_msg = pulse_strerror (application->state.async_op.err);
@@ -3675,13 +3776,13 @@ handle_async_operation (PexNinja * application)
         PulseRegistrationAliasList * result = NULL;
         PulseError err = pulse_registrations_query_alias (application->client, "", 1, 1, &result);
         if (err != PULSE_SUCCESS) {
-          GST_ERROR ("Failed to pull alias list: %s", pulse_strerror (err));
+          PEX_LOG_ERROR ("Failed to pull alias list: %s", pulse_strerror (err));
         }
         pulse_registration_alias_list_free (result);
       }
     } else if (application->state.async_op.op == ASYNC_OP_DEREGISTER) {
       if (application->state.async_op.err != PULSE_SUCCESS) {
-        GST_DEBUG ("pulse_deregister failed: %s\n", pulse_strerror (application->state.async_op.err));
+        PEX_LOG_DEBUG ("pulse_deregister failed: %s\n", pulse_strerror (application->state.async_op.err));
         _update_registration_status_msg (application, "Failed to deregister");
         if (application->state.async_op.err != PULSE_ERROR_PROCESS_ABORTED)
           application->state.error_msg = pulse_strerror (application->state.async_op.err);
@@ -3725,7 +3826,7 @@ pulseimgui_perform_registration (PexNinja * application)
   PulseError err =
     pulse_register_async (application->client, &registration_params, &async_op_cb_config, &progress_config);
   if (err != PULSE_SUCCESS) {
-    GST_DEBUG ("pulse_register failed: %s\n", pulse_strerror (err));
+    PEX_LOG_DEBUG ("pulse_register failed: %s\n", pulse_strerror (err));
     if (err != PULSE_ERROR_PROCESS_ABORTED)
       application->state.error_msg = pulse_strerror (err);
     application->state.registered = false;
@@ -3746,7 +3847,7 @@ _update_conference_alias_list_cb (ImGuiInputTextCallbackData * data)
   if (data->BufTextLen > 0) {
     PulseError err = pulse_registrations_query_alias (application->client, data->Buf, 0, -1, &conference_alias_list);
     if (err != PULSE_SUCCESS) {
-      GST_ERROR ("Failed to fetch alias list: %s", pulse_strerror (err));
+      PEX_LOG_ERROR ("Failed to fetch alias list: %s", pulse_strerror (err));
     }
   }
   pulse_registration_alias_list_free (application->state.conference_alias_list);
@@ -3766,7 +3867,7 @@ _update_device_alias_list_cb (ImGuiInputTextCallbackData * data)
   if (data->BufTextLen > 0) {
     PulseError err = pulse_registrations_query_alias (application->client, data->Buf, -1, 0, &device_alias_list);
     if (err != PULSE_SUCCESS) {
-      GST_ERROR ("Failed to fetch alias list: %s", pulse_strerror (err));
+      PEX_LOG_ERROR ("Failed to fetch alias list: %s", pulse_strerror (err));
     }
   }
   pulse_registration_alias_list_free (application->state.device_alias_list);
@@ -3782,7 +3883,7 @@ _init_conference_alias_list (PexNinja * application)
     PulseRegistrationAliasList * conference_alias_list = NULL;
     PulseError err = pulse_registrations_query_alias (application->client, NULL, 0, -1, &conference_alias_list);
     if (err != PULSE_SUCCESS) {
-      GST_ERROR ("Failed to fetch conference alias list: %s", pulse_strerror (err));
+      PEX_LOG_ERROR ("Failed to fetch conference alias list: %s", pulse_strerror (err));
     }
     pulse_registration_alias_list_free (application->state.conference_alias_list);
     application->state.conference_alias_list = conference_alias_list;
@@ -3796,7 +3897,7 @@ _init_device_alias_list (PexNinja * application)
     PulseRegistrationAliasList * device_alias_list = NULL;
     PulseError err = pulse_registrations_query_alias (application->client, NULL, -1, 0, &device_alias_list);
     if (err != PULSE_SUCCESS) {
-      GST_ERROR ("Failed to fetch device alias list: %s", pulse_strerror (err));
+      PEX_LOG_ERROR ("Failed to fetch device alias list: %s", pulse_strerror (err));
     }
     pulse_registration_alias_list_free (application->state.device_alias_list);
     application->state.device_alias_list = device_alias_list;
@@ -3850,7 +3951,7 @@ configure_window_roster_list (PexNinja * application)
       PulseError err = pulse_session_get_role (application->client, &role);
       if (err != PULSE_SUCCESS) {
         if (err != PULSE_ERROR_NOT_CONNECTED) {
-          GST_DEBUG ("Failed to call pulse_session_get_role: %s\n", pulse_strerror (err));
+          PEX_LOG_DEBUG ("Failed to call pulse_session_get_role: %s\n", pulse_strerror (err));
         }
         role = PULSE_CONFERENCE_ROLE_GUEST;
       }
@@ -3859,15 +3960,15 @@ configure_window_roster_list (PexNinja * application)
       bool has_non_default_send_to_audio_mix = false;
       bool has_non_default_receive_from_audio_mix = false;
       for (int i = 0; i < (int)participants->participant_list_size; i++) {
-        if (participants->participant_list[i]->is_active_participant == FALSE)
+        if (participants->participant_list[i]->is_active_participant == false)
           continue;
         for (size_t j = 0; j < participants->participant_list[i]->send_to_audio_mixes.list_size; j++) {
-          if (g_strcmp0 (participants->participant_list[i]->send_to_audio_mixes.entries[j].mix_name, "main") != 0) {
+          if (pex_strcmp0 (participants->participant_list[i]->send_to_audio_mixes.entries[j].mix_name, "main") != 0) {
             has_non_default_send_to_audio_mix = true;
           }
         }
 
-        if (g_strcmp0 (participants->participant_list[i]->receive_from_audio_mix, "main") != 0) {
+        if (pex_strcmp0 (participants->participant_list[i]->receive_from_audio_mix, "main") != 0) {
           has_non_default_receive_from_audio_mix = true;
         }
       }
@@ -3905,7 +4006,7 @@ configure_window_roster_list (PexNinja * application)
         ImGui::Text ("Commands");
 
         for (int row = 0; row < (int)participants->participant_list_size; row++) {
-          if (participants->participant_list[row]->is_active_participant == FALSE)
+          if (participants->participant_list[row]->is_active_participant == false)
             continue;
 
           ImVec4 color = clear_color;
@@ -4285,37 +4386,37 @@ configure_window_chat_window (PexNinja * application)
   ImGui::Separator ();
 
   PexNinjaRoom * room = application->room_list.current_room;
-  g_assert (room);
+  assert (room);
 
   if (room->chat_messages.selected_message_recepient_name == NULL) {
     room->chat_messages.selected_message_recepient_name = "<broadcast>";
   }
 
   if (ImGui::BeginCombo ("recepient", room->chat_messages.selected_message_recepient_name, ImGuiComboFlags_None)) {
-    bool is_selected = (g_strcmp0 (room->chat_messages.selected_message_recepient_name, "<broadcast>") == 0);
+    bool is_selected = (pex_strcmp0 (room->chat_messages.selected_message_recepient_name, "<broadcast>") == 0);
     if (ImGui::Selectable ("<broadcast>", is_selected)) {
       room->chat_messages.selected_message_recepient_name = "<broadcast>";
-      g_free (room->chat_messages.selected_message_recepient_uuid);
+      free (room->chat_messages.selected_message_recepient_uuid);
       room->chat_messages.selected_message_recepient_uuid = NULL;
     }
     if (is_selected)
       ImGui::SetItemDefaultFocus ();
 
     for (int i = 0; i < (int)room->roster_list.data->participant_list_size; i++) {
-      if (room->roster_list.data->participant_list[i]->supports_direct_chat == FALSE)
+      if (room->roster_list.data->participant_list[i]->supports_direct_chat == false)
         continue;
-      if (room->roster_list.data->participant_list[i]->is_active_participant == FALSE)
+      if (room->roster_list.data->participant_list[i]->is_active_participant == false)
         continue;
       if (room->roster_list.data->participant_list[i]->is_local_participant)
         continue;
       const char * name = room->roster_list.data->participant_list[i]->display_name;
 
-      is_selected = (g_strcmp0 (room->chat_messages.selected_message_recepient_name, name) == 0);
+      is_selected = (pex_strcmp0 (room->chat_messages.selected_message_recepient_name, name) == 0);
       if (ImGui::Selectable (name, is_selected)) {
         room->chat_messages.selected_message_recepient_name = name;
-        g_free (room->chat_messages.selected_message_recepient_uuid);
+        free (room->chat_messages.selected_message_recepient_uuid);
         room->chat_messages.selected_message_recepient_uuid =
-          g_strdup (room->roster_list.data->participant_list[i]->uuid);
+          strdup (room->roster_list.data->participant_list[i]->uuid);
       }
       if (is_selected)
         ImGui::SetItemDefaultFocus ();
@@ -4334,7 +4435,7 @@ configure_window_chat_window (PexNinja * application)
 
   if (send) {
     if (strlen (send_message) > 0) {
-      GST_DEBUG ("Sending msg: %s", send_message);
+      PEX_LOG_DEBUG ("Sending msg: %s", send_message);
       PulseMessageRequest msg;
       msg.content_type = PULSE_MESSAGE_CONTENT_TYPE_PLAIN;
       msg.payload = send_message;
@@ -4494,7 +4595,7 @@ _publish_accept_cb (int client_id, const char * path, const char * params, void 
   const std::string p = path != NULL ? std::string (path) : std::string ();
   bool accepted = true;
 
-  GST_DEBUG ("RTMP_INPUT_PUBLISH_ACCEPT: client_id=%d path='%s' params='%s' uc=%p -> %s", client_id,
+  PEX_LOG_DEBUG ("RTMP_INPUT_PUBLISH_ACCEPT: client_id=%d path='%s' params='%s' uc=%p -> %s", client_id,
              path ? path : "(null)", params ? params : "(null)", user_context, accepted ? "accept" : "REJECT");
   return accepted;
 }
@@ -4504,7 +4605,7 @@ _publish_start_cb (int client_id, const char * path, const char * params, void *
 {
   PexNinja * application = (PexNinja *)user_context;
 
-  GST_DEBUG ("RTMP_INPUT_PUBLISH_START: client_id=%d path='%s' params='%s' uc=%p", client_id, path ? path : "(null)",
+  PEX_LOG_DEBUG ("RTMP_INPUT_PUBLISH_START: client_id=%d path='%s' params='%s' uc=%p", client_id, path ? path : "(null)",
              params ? params : "(null)", user_context);
 
   std::lock_guard<std::mutex> lock (application->state.rtmp_server.mu);
@@ -4520,7 +4621,7 @@ _publish_stop_cb (int client_id, const char * path, const char * params, uint32_
 {
   PexNinja * application = (PexNinja *)user_context;
 
-  GST_DEBUG ("RTMP_INPUT_PUBLISH_STOP: client_id=%d path='%s' params='%s' status=%u uc=%p", client_id,
+  PEX_LOG_DEBUG ("RTMP_INPUT_PUBLISH_STOP: client_id=%d path='%s' params='%s' status=%u uc=%p", client_id,
              path ? path : "(null)", params ? params : "(null)", server_status, user_context);
 
   std::lock_guard<std::mutex> lock (application->state.rtmp_server.mu);
@@ -4574,7 +4675,7 @@ _start (PexNinja * application, bool lazy)
     return PULSE_SUCCESS;
 
   if (srv.path[0] == '\0') {
-    GST_WARNING ("rtmp_server::_start: empty server path; configure one in Menu → RTMP Server");
+    PEX_LOG_WARNING ("rtmp_server::_start: empty server path; configure one in Menu → RTMP Server");
     return PULSE_ERROR_INVALID_PARAMETER;
   }
 
@@ -4613,11 +4714,11 @@ _start (PexNinja * application, bool lazy)
 
   PulseError err = pulse_rtmp_session_connect_input (application->client, kListenerSlot, &config);
   if (err != PULSE_SUCCESS) {
-    GST_WARNING ("rtmp_server::_start: pulse_rtmp_session_connect_input failed: %s", pulse_strerror (err));
+    PEX_LOG_WARNING ("rtmp_server::_start: pulse_rtmp_session_connect_input failed: %s", pulse_strerror (err));
     return err;
   }
 
-  GST_DEBUG ("rtmp_server::_start: listener up on slot=%s port=%u tls=%d (%s)",
+  PEX_LOG_DEBUG ("rtmp_server::_start: listener up on slot=%s port=%u tls=%d (%s)",
              pulse_media_content_to_string (kListenerSlot), srv.listening_port, srv.use_tls,
              lazy ? "lazy" : "explicit");
   srv.is_connected = true;
@@ -4636,10 +4737,10 @@ _stop (PexNinja * application)
 
   PulseError err = pulse_rtmp_session_disconnect_input (application->client, srv.connected_media_content);
   if (err != PULSE_SUCCESS) {
-    GST_WARNING ("rtmp_server::_stop: pulse_rtmp_session_disconnect_input failed: %s", pulse_strerror (err));
+    PEX_LOG_WARNING ("rtmp_server::_stop: pulse_rtmp_session_disconnect_input failed: %s", pulse_strerror (err));
     return err;
   }
-  GST_DEBUG ("rtmp_server::_stop: listener down (was on slot=%s)",
+  PEX_LOG_DEBUG ("rtmp_server::_stop: listener down (was on slot=%s)",
              pulse_media_content_to_string (srv.connected_media_content));
   srv.is_connected = false;
   srv.lazy_started = false;
@@ -4825,7 +4926,7 @@ _materialise (PexNinja * application, PexNinjaState::PexNinjaSourceLibrary::Sour
        * publishers on the configured server-wide path. */
       auto & srv = application->state.rtmp_server;
       if (srv.path[0] == '\0') {
-        GST_WARNING ("source_library: kRtmp source '%s' cannot start: server path is empty "
+        PEX_LOG_WARNING ("source_library: kRtmp source '%s' cannot start: server path is empty "
                      "(configure one in Menu → RTMP Server)",
                      src.name);
         return PULSE_ERROR_INVALID_PARAMETER;
@@ -4834,7 +4935,7 @@ _materialise (PexNinja * application, PexNinjaState::PexNinjaSourceLibrary::Sour
        * time — the underlying Pulse RTMP API exposes one path per
        * listener, so two sources can't meaningfully share it. */
       if (!rtmp_server::_acquire_owner (application, src.id)) {
-        GST_WARNING ("source_library: kRtmp source '%s' cannot start: another RTMP source "
+        PEX_LOG_WARNING ("source_library: kRtmp source '%s' cannot start: another RTMP source "
                      "is already using the listener",
                      src.name);
         return PULSE_ERROR_INVALID_PARAMETER;
@@ -4901,7 +5002,7 @@ _materialise (PexNinja * application, PexNinjaState::PexNinjaSourceLibrary::Sour
         err = pulse_rtsp_session_connect_input (application->client, &config, &session_id);
         if (err != PULSE_SUCCESS) {
           snprintf (src.rtsp_last_error, sizeof (src.rtsp_last_error), "%s", pulse_strerror (err));
-          GST_WARNING ("source_library: kRtsp source '%s' connect failed (%s): %s", src.name, src.rtsp_url,
+          PEX_LOG_WARNING ("source_library: kRtsp source '%s' connect failed (%s): %s", src.name, src.rtsp_url,
                        pulse_strerror (err));
           break;
         }
@@ -4935,7 +5036,7 @@ _materialise (PexNinja * application, PexNinjaState::PexNinjaSourceLibrary::Sour
 
         if (src.rtsp_video_streams.empty ()) {
           snprintf (src.rtsp_last_error, sizeof (src.rtsp_last_error), "no video streams advertised");
-          GST_WARNING ("source_library: kRtsp source '%s' has no video streams", src.name);
+          PEX_LOG_WARNING ("source_library: kRtsp source '%s' has no video streams", src.name);
           /* Tear the dial back down so a later retry starts clean. */
           pulse_rtsp_session_disconnect_input (application->client, session_id);
           src.rtsp_session_id = PULSE_RTSP_SESSION_ID_NONE;
@@ -4967,7 +5068,7 @@ _materialise (PexNinja * application, PexNinjaState::PexNinjaSourceLibrary::Sour
                                                     src.rtsp_selected_stream_id, &id);
       if (err != PULSE_SUCCESS) {
         snprintf (src.rtsp_last_error, sizeof (src.rtsp_last_error), "bind stream failed: %s", pulse_strerror (err));
-        GST_WARNING ("source_library: kRtsp source '%s' stream-bind failed: %s", src.name, pulse_strerror (err));
+        PEX_LOG_WARNING ("source_library: kRtsp source '%s' stream-bind failed: %s", src.name, pulse_strerror (err));
         break;
       }
       src.rtsp_last_error[0] = '\0';
@@ -5023,7 +5124,7 @@ _release (PexNinja * application, PexNinjaState::PexNinjaSourceLibrary::Source &
   if (src.input_id != PULSE_VIDEO_MIX_INPUT_ID_NONE) {
     PulseError err = pulse_video_mix_input_release (application->client, src.input_id);
     if (err != PULSE_SUCCESS)
-      GST_WARNING ("source_library: pulse_video_mix_input_release failed for source '%s': %s", src.name,
+      PEX_LOG_WARNING ("source_library: pulse_video_mix_input_release failed for source '%s': %s", src.name,
                    pulse_strerror (err));
     src.input_id = PULSE_VIDEO_MIX_INPUT_ID_NONE;
     /* Forget which device the (now-released) input was bound to so the
@@ -5049,7 +5150,7 @@ _release (PexNinja * application, PexNinjaState::PexNinjaSourceLibrary::Source &
   if (src.kind == SL::kRtsp && src.rtsp_session_id != PULSE_RTSP_SESSION_ID_NONE) {
     PulseError err = pulse_rtsp_session_disconnect_input (application->client, src.rtsp_session_id);
     if (err != PULSE_SUCCESS && err != PULSE_ERROR_NOT_CONFIGURED)
-      GST_WARNING ("source_library: pulse_rtsp_session_disconnect_input failed for source '%s': %s", src.name,
+      PEX_LOG_WARNING ("source_library: pulse_rtsp_session_disconnect_input failed for source '%s': %s", src.name,
                    pulse_strerror (err));
     src.rtsp_session_id = PULSE_RTSP_SESSION_ID_NONE;
     src.rtsp_video_streams.clear ();
@@ -5262,7 +5363,7 @@ _eager_materialise (PexNinja * application, int canvas_idx, uint32_t source_lib_
     return;
   PulseError err = source_library::_materialise (application, *src);
   if (err != PULSE_SUCCESS) {
-    GST_WARNING ("compositor: eager materialise failed for source '%s' (%s): %s", src->name,
+    PEX_LOG_WARNING ("compositor: eager materialise failed for source '%s' (%s): %s", src->name,
                  source_library::_kind_label (src->kind), pulse_strerror (err));
     application->state.error_msg = pulse_strerror (err);
   }
@@ -5337,7 +5438,7 @@ _build_mix_config_from_doc (PexNinja * application, int canvas_idx,
   size_t n = 0;
   for (const auto & r : doc.regions) {
     if (n >= inputs_cap) {
-      GST_WARNING ("compositor: doc has more regions (%zu) than inputs cap (%zu); truncating", doc.regions.size (),
+      PEX_LOG_WARNING ("compositor: doc has more regions (%zu) than inputs cap (%zu); truncating", doc.regions.size (),
                    inputs_cap);
       break;
     }
@@ -5430,7 +5531,7 @@ _apply_canvas (PexNinja * application, PexNinjaState::PexNinjaCompositor::Canvas
       source_library::_release (application, *src);
       PulseError remat_err = source_library::_materialise (application, *src);
       if (remat_err != PULSE_SUCCESS) {
-        GST_WARNING ("compositor: camera re-materialise failed for source '%s': %s", src->name,
+        PEX_LOG_WARNING ("compositor: camera re-materialise failed for source '%s': %s", src->name,
                      pulse_strerror (remat_err));
         application->state.error_msg = pulse_strerror (remat_err);
         /* Best-effort: continue with whatever inputs we have. The
@@ -5458,7 +5559,7 @@ _apply_canvas (PexNinja * application, PexNinjaState::PexNinjaCompositor::Canvas
 
   PulseError err = pulse_video_mix_connect (application->client, &config, media_content);
   if (err != PULSE_SUCCESS) {
-    GST_WARNING ("compositor: apply canvas %s failed: %s", _canvas_label (c), pulse_strerror (err));
+    PEX_LOG_WARNING ("compositor: apply canvas %s failed: %s", _canvas_label (c), pulse_strerror (err));
     application->state.error_msg = pulse_strerror (err);
     comp.connected_on_wire[(int)c] = false;
     return;
@@ -7539,7 +7640,7 @@ show_stats_graphs_plot_data (PexNinja * application, stats_src ss, stats_dir sd,
 void
 show_stats_graphs (PexNinja * application)
 {
-  g_assert (application);
+  assert (application);
 
   /* We should already be holding the media_stats_lock here! */
 
@@ -7793,17 +7894,15 @@ static void
 on_audio_level_changed (void * user_context, const PulseAudioLevelMetasList * list)
 {
   PexNinja * application = (PexNinja *)user_context;
-  GAsyncQueue * mic_audio_levels = application->state.mic_audio_levels;
+  AudioLevelQueue * mic_audio_levels = application->state.mic_audio_levels;
 
-  g_async_queue_lock (mic_audio_levels);
-  for (gsize i = 0; i < list->len; i++) {
-    g_async_queue_push_unlocked (mic_audio_levels, GUINT_TO_POINTER (list->metas[i].level));
+  std::lock_guard<std::mutex> lock (mic_audio_levels->mutex);
+  for (size_t i = 0; i < list->len; i++) {
+    mic_audio_levels->items.push_back (list->metas[i].level);
   }
 
-  while (g_async_queue_length_unlocked (mic_audio_levels) > audio_levels_window_size)
-    g_async_queue_pop_unlocked (mic_audio_levels);
-
-  g_async_queue_unlock (mic_audio_levels);
+  while ((int)mic_audio_levels->items.size () > audio_levels_window_size)
+    mic_audio_levels->items.pop_front ();
 }
 
 static void
@@ -7879,9 +7978,9 @@ enumerate_desktop_windows ()
 static std::string
 get_window_handle_name (HWND hwnd)
 {
-  gchar title[64];
+  char title[64];
 
-  if (GetWindowText (hwnd, title, sizeof (title)) && g_strrstr (title, "PexNinja") == NULL)
+  if (GetWindowText (hwnd, title, sizeof (title)) && pex_strrstr (title, "PexNinja") == NULL)
     return std::string (title);
 
   return "";
@@ -8315,7 +8414,7 @@ pexninja_start_video_mix (PexNinja * application, PexNinjaState::PexNinjaVideoMi
 {
   PulseError err = pulse_video_mix_connect (application->client, mix_config, media_content);
   if (err != PULSE_SUCCESS) {
-    GST_WARNING ("Failed to connect video mix: %s", pulse_strerror (err));
+    PEX_LOG_WARNING ("Failed to connect video mix: %s", pulse_strerror (err));
     if (vm.desktop_input != PULSE_VIDEO_MIX_INPUT_ID_NONE) {
       pulse_video_mix_input_release (application->client, vm.desktop_input);
       vm.desktop_input = PULSE_VIDEO_MIX_INPUT_ID_NONE;
@@ -8383,7 +8482,7 @@ _reconnect_video_mix (PexNinja * application, PexNinjaState::PexNinjaVideoMix & 
     pulse_video_mix_disconnect (application->client, vm.media_content);
     PulseError err = pulse_video_mix_connect (application->client, &config, vm.media_content);
     if (err != PULSE_SUCCESS) {
-      GST_WARNING ("Failed to connect video mix: %s", pulse_strerror (err));
+      PEX_LOG_WARNING ("Failed to connect video mix: %s", pulse_strerror (err));
       vm.active = false;
     }
   }
@@ -8476,7 +8575,7 @@ _paint_ensure_annotation_input (PexNinja * application)
   if (auto * gfx = _paint_find_gfx_source_on_active_canvas (application)) {
     vm.annotation_input = gfx->input_id;
     vm.annotation_input_borrowed = true;
-    GST_INFO ("paint: borrowing annotation_input %u from Compositor Gfx source '%s' on canvas %d",
+    PEX_LOG_INFO ("paint: borrowing annotation_input %u from Compositor Gfx source '%s' on canvas %d",
               (unsigned)vm.annotation_input, gfx->name, application->state.compositor.active_canvas);
     return PULSE_SUCCESS;
   }
@@ -8484,7 +8583,7 @@ _paint_ensure_annotation_input (PexNinja * application)
   PulseError err = pulse_video_mix_input_from_annotation (application->client, application->state.paint.canvas_width,
                                                           application->state.paint.canvas_height, &vm.annotation_input);
   if (err != PULSE_SUCCESS) {
-    GST_WARNING ("Failed to acquire annotation input: %s", pulse_strerror (err));
+    PEX_LOG_WARNING ("Failed to acquire annotation input: %s", pulse_strerror (err));
     return err;
   }
   vm.annotation_input_borrowed = false;
@@ -8828,7 +8927,7 @@ bg_replacement_on_mix (PexNinja * application)
     if (vm.desktop_input == PULSE_VIDEO_MIX_INPUT_ID_NONE) {
       PulseError err = pulse_video_mix_input_from_desktop (application->client, 0, PULSE_DISPLAY, &vm.desktop_input);
       if (err != PULSE_SUCCESS) {
-        GST_WARNING ("Failed to acquire desktop input for background replacement: %s", pulse_strerror (err));
+        PEX_LOG_WARNING ("Failed to acquire desktop input for background replacement: %s", pulse_strerror (err));
         /* Do not enable or restart the mix when we have no valid desktop input */
         return;
       }
@@ -9037,7 +9136,7 @@ configure_menu_registration (PexNinja * application)
   ImGui::InputText ("alias", application->config.registration.alias, 256);
   ImGui::InputText ("host", application->config.registration.host, 256);
   ImGui::Checkbox ("Authenticate with SSO", &application->config.registration.use_sso);
-  if (application->config.registration.use_sso == FALSE) {
+  if (application->config.registration.use_sso == false) {
     ImGui::InputText ("username", application->config.registration.username, 256);
     ImGui::InputText ("password", application->config.registration.password, 128);
   }
@@ -9273,7 +9372,7 @@ configure_menu_connection (PexNinja * application)
 
       PulseError err = pulse_connect_with_rest_async (application->client, &cfg, &async_op_cb_config, &progress_config);
       if (err != PULSE_SUCCESS) {
-        GST_DEBUG ("pulse_connect_with_rest failed: %s\n", pulse_strerror (err));
+        PEX_LOG_DEBUG ("pulse_connect_with_rest failed: %s\n", pulse_strerror (err));
         _update_conference_status_msg (application, "Failed to connect");
         if (err != PULSE_ERROR_PROCESS_ABORTED)
           application->state.error_msg = pulse_strerror (err);
@@ -9307,7 +9406,7 @@ pexninja_set_sharing_desktop_audio (PexNinja * application, bool sharing_desktop
                                            : pulse_device_session_disconnect_desktop_audio_input (application->client);
 
     if (err != PULSE_SUCCESS) {
-      GST_WARNING ("%s desktop-audio failed: %s", sharing_desktop_audio ? "Enabling" : "Disabling",
+      PEX_LOG_WARNING ("%s desktop-audio failed: %s", sharing_desktop_audio ? "Enabling" : "Disabling",
                    pulse_strerror (err));
     }
 
@@ -9343,7 +9442,7 @@ _stop_presentation_mix_session (PexNinja * application)
     pm.desktop_input_kind = PexNinjaState::PexNinjaVideoMix::kBackgroundNone;
   }
   /* we keep the camera input ID! */
-  GST_DEBUG ("Stopping presentation mix session. Camera input has ID: %u", pm.camera_input);
+  PEX_LOG_DEBUG ("Stopping presentation mix session. Camera input has ID: %u", pm.camera_input);
 
   pm.active = false;
 }
@@ -9377,7 +9476,7 @@ configure_presentation_displays (PexNinja * application)
       PulseError err = pulse_video_mix_input_from_desktop (application->client, (uint64_t)(uintptr_t)handle,
                                                            PULSE_DISPLAY, &pm.desktop_input);
       if (err != PULSE_SUCCESS) {
-        GST_WARNING ("Connecting desktop-video input failed: %s", pulse_strerror (err));
+        PEX_LOG_WARNING ("Connecting desktop-video input failed: %s", pulse_strerror (err));
       } else {
         pm.desktop_input_kind = PexNinjaState::PexNinjaVideoMix::kBackgroundDesktop;
         pexninja_set_presenting (application, true);
@@ -9405,7 +9504,7 @@ configure_presentation_windows (PexNinja * application)
       continue;
 
     if (ImGui::MenuItem (windowName.c_str (), NULL)) {
-      GST_DEBUG ("configure_presentation_windows: MenuItem clicked for handle=%zu presenting=%s", (uintptr_t)handle,
+      PEX_LOG_DEBUG ("configure_presentation_windows: MenuItem clicked for handle=%zu presenting=%s", (uintptr_t)handle,
                  application->state.presenting ? "true" : "false");
       auto & pm = application->state.preso_mix;
       if (application->state.presenting) {
@@ -9418,7 +9517,7 @@ configure_presentation_windows (PexNinja * application)
       PulseError err =
         pulse_video_mix_input_from_desktop (application->client, (uint64_t)handle, PULSE_WINDOW, &pm.desktop_input);
       if (err != PULSE_SUCCESS) {
-        GST_WARNING ("Connecting desktop-video input failed: %s", pulse_strerror (err));
+        PEX_LOG_WARNING ("Connecting desktop-video input failed: %s", pulse_strerror (err));
       } else {
         pm.desktop_input_kind = PexNinjaState::PexNinjaVideoMix::kBackgroundWindow;
         pexninja_set_presenting (application, true);
@@ -9508,9 +9607,9 @@ configure_menu_change_layout (PexNinja * application)
 
     if (application->state.available_layouts) {
       for (size_t i = 0; i < application->state.available_layouts->list_size; i++) {
-        g_assert (application->state.available_layouts->list[i]);
+        assert (application->state.available_layouts->list[i]);
         if (ImGui::MenuItem (application->state.available_layouts->list[i], NULL,
-                             (g_strcmp0 (application->state.layout.layout.c_str (),
+                             (pex_strcmp0 (application->state.layout.layout.c_str (),
                                          application->state.available_layouts->list[i]) == 0),
                              true)) {
           application->state.layout.layout = std::string (application->state.available_layouts->list[i]);
@@ -9799,7 +9898,7 @@ configure_menu (PexNinja * application)
 
           PulseError err = pulse_deregister_async (application->client, &async_op_cb_config, &progress_config);
           if (err != PULSE_SUCCESS) {
-            GST_DEBUG ("pulse_deregister failed: %s\n", pulse_strerror (err));
+            PEX_LOG_DEBUG ("pulse_deregister failed: %s\n", pulse_strerror (err));
             _update_registration_status_msg (application, "Failed to deregister");
             if (err != PULSE_ERROR_PROCESS_ABORTED)
               application->state.error_msg = pulse_strerror (err);
@@ -9942,7 +10041,7 @@ configure_menu_controls (PexNinja * application)
     PulseError err = pulse_session_get_role (application->client, &role);
     if (err != PULSE_SUCCESS) {
       if (err != PULSE_ERROR_NOT_CONNECTED) {
-        GST_DEBUG ("Failed to call pulse_session_get_role: %s\n", pulse_strerror (err));
+        PEX_LOG_DEBUG ("Failed to call pulse_session_get_role: %s\n", pulse_strerror (err));
       }
       role = PULSE_CONFERENCE_ROLE_GUEST;
     }
@@ -10160,7 +10259,7 @@ configure_menu_info (PexNinja * application)
   {                                                                                                                    \
     if (sep)                                                                                                           \
       ImGui::Separator ();                                                                                             \
-    sep = TRUE;                                                                                                        \
+    sep = true;                                                                                                        \
   }
 
 static void
@@ -10175,7 +10274,7 @@ configure_bottom_bar_status (PexNinja * application)
     ImGui::TextColored (yellow_color, "%s", application->state.conference_status);
   } else if (application->state.conn_status == PULSE_CONNECTION_STATUS_CONNECTED) {
     SEPARATE_IF_NEEDED (sep_state);
-    bool direct_media = FALSE;
+    bool direct_media = false;
     std::lock_guard<std::mutex> lock (application->room_list.mutex);
     if (application->room_list.current_room) {
       direct_media = application->room_list.current_room->conference_status.direct_media;
@@ -10523,7 +10622,7 @@ _configure_popup_conference_extension_request (PexNinja * application)
         }
       }
 
-      gboolean disable_commit = strlen (application->conference_extension_request.conference_extension) == 0;
+      bool disable_commit = strlen (application->conference_extension_request.conference_extension) == 0;
 
       if (disable_commit)
         imgui_begin_disabled_state ();
@@ -10679,7 +10778,7 @@ _configure_popup_new_audio_mixer (PexNinja * application)
     ImGui::Text ("Enter audio mixer name:");
 
     static char name[1024];
-    gboolean acknowledged = false;
+    bool acknowledged = false;
     if (ImGui::InputText ("", name, sizeof (name) - 1, ImGuiInputTextFlags_EnterReturnsTrue)) {
       if (strlen (name) > 0) {
         // Setup stuff.
@@ -10723,7 +10822,7 @@ _configure_popup_new_breakout_room (PexNinja * application)
   if (ImGui::BeginPopupModal ("Create new breakout room", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
     ImGui::SetItemDefaultFocus ();
 
-    gboolean acknowledged = false;
+    bool acknowledged = false;
     static char name[1024];
     ImGui::Text ("Enter room name:");
     if (ImGui::InputText ("", name, sizeof (name) - 1, ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -10825,19 +10924,19 @@ _configure_popup_participant_move (PexNinja * application)
         }
       }
       if (source_room_changed) {
-        GST_ERROR ("Source room changed to %u, setting destination to %u", source_room_id, local_destination_room_id);
+        PEX_LOG_ERROR ("Source room changed to %u, setting destination to %u", source_room_id, local_destination_room_id);
         destination_room_id = local_destination_room_id;
       }
       ImGui::EndCombo ();
     }
 
     PexNinjaRoom * room = application->room_list.room_map[source_room_id];
-    g_assert (room);
+    assert (room);
     if (room->roster_list.active_participants == 0) {
       ImGui::Text ("The room is empty.");
     } else {
       for (int i = 0; i < (int)room->roster_list.data->participant_list_size; i++) {
-        if (room->roster_list.data->participant_list[i]->is_active_participant == FALSE)
+        if (room->roster_list.data->participant_list[i]->is_active_participant == false)
           continue;
         auto search = chosen_participants.find (room->roster_list.data->participant_list[i]->uuid);
         bool state = (search != chosen_participants.end ());
@@ -10847,7 +10946,7 @@ _configure_popup_participant_move (PexNinja * application)
             chosen_participants.insert (room->roster_list.data->participant_list[i]->uuid);
           else
             chosen_participants.erase (room->roster_list.data->participant_list[i]->uuid);
-          GST_ERROR ("%s participant %s", state ? "Selected" : "Unselected", name);
+          PEX_LOG_ERROR ("%s participant %s", state ? "Selected" : "Unselected", name);
         }
       }
     }
@@ -10917,7 +11016,7 @@ static inline void
 _configure_popup_send_dtmf_sequence (PexNinja * application)
 {
   if (application->state.popup_send_dtmf_sequence) {
-    application->state.popup_send_dtmf_sequence = FALSE;
+    application->state.popup_send_dtmf_sequence = false;
     application->state.dtmf.digits = std::string ();
     ImGui::OpenPopup ("Send DTMF sequence");
   }
@@ -10931,7 +11030,7 @@ _configure_popup_send_dtmf_sequence (PexNinja * application)
     ImGui::SetItemDefaultFocus ();
     ImGui::InputText ("dtmf_digits", &application->state.dtmf.digits, ImGuiInputTextFlags_None);
 
-    gboolean input_valid = (application->state.dtmf.digits.length () > 0);
+    bool input_valid = (application->state.dtmf.digits.length () > 0);
     if (input_valid) {
       for (size_t i = 0; i < application->state.dtmf.digits.length (); i++) {
         char c = application->state.dtmf.digits.at (i);
@@ -10945,9 +11044,9 @@ _configure_popup_send_dtmf_sequence (PexNinja * application)
     if (!input_valid)
       imgui_begin_disabled_state ();
 
-    gboolean acknowledged = FALSE;
+    bool acknowledged = false;
     if (ImGui::Button ("Send")) {
-      acknowledged = TRUE;
+      acknowledged = true;
     }
 
     if (!input_valid)
@@ -10964,7 +11063,7 @@ _configure_popup_send_dtmf_sequence (PexNinja * application)
       PulseError err =
         pulse_participant_control_dtmf (application->client, recepient, application->state.dtmf.digits.c_str ());
       if (err != PULSE_SUCCESS) {
-        GST_ERROR ("Failed to send DTMF to recepient '%s': %s", recepient, pulse_strerror (err));
+        PEX_LOG_ERROR ("Failed to send DTMF to recepient '%s': %s", recepient, pulse_strerror (err));
       }
       ImGui::CloseCurrentPopup ();
     }
@@ -10994,31 +11093,31 @@ _configure_popup_disconnected (PexNinja * application)
 static void
 configure_popups (PexNinja * application)
 {
-  if (g_atomic_int_compare_and_exchange (&application->incoming_call.popup_state, POPUP_STATE_QUEUED,
+  if (atomic_cas_int (&application->incoming_call.popup_state, POPUP_STATE_QUEUED,
                                          POPUP_STATE_SHOWING)) {
     ImGui::OpenPopup ("Incoming call");
-  } else if (g_atomic_int_compare_and_exchange (&application->incoming_call_cancelled.popup_state, POPUP_STATE_QUEUED,
+  } else if (atomic_cas_int (&application->incoming_call_cancelled.popup_state, POPUP_STATE_QUEUED,
                                                 POPUP_STATE_SHOWING)) {
     ImGui::OpenPopup ("Missed call");
-  } else if (g_atomic_int_compare_and_exchange (&application->sso_provider.popup_state, POPUP_STATE_QUEUED,
+  } else if (atomic_cas_int (&application->sso_provider.popup_state, POPUP_STATE_QUEUED,
                                                 POPUP_STATE_SHOWING)) {
     ImGui::OpenPopup ("Authentication needed");
-  } else if (g_atomic_int_compare_and_exchange (&application->pin_code_request.popup_state, POPUP_STATE_QUEUED,
+  } else if (atomic_cas_int (&application->pin_code_request.popup_state, POPUP_STATE_QUEUED,
                                                 POPUP_STATE_SHOWING)) {
     ImGui::OpenPopup ("Pin code request");
-  } else if (g_atomic_int_compare_and_exchange (&application->conference_extension_request.popup_state,
+  } else if (atomic_cas_int (&application->conference_extension_request.popup_state,
                                                 POPUP_STATE_QUEUED, POPUP_STATE_SHOWING)) {
     ImGui::OpenPopup ("Conference extension request");
-  } else if (g_atomic_int_compare_and_exchange (&application->tls_degrade.popup_state, POPUP_STATE_QUEUED,
+  } else if (atomic_cas_int (&application->tls_degrade.popup_state, POPUP_STATE_QUEUED,
                                                 POPUP_STATE_SHOWING)) {
     ImGui::OpenPopup ("Accept TLS degrade");
-  } else if (g_atomic_int_compare_and_exchange (&application->audio_unmute.popup_state, POPUP_STATE_QUEUED,
+  } else if (atomic_cas_int (&application->audio_unmute.popup_state, POPUP_STATE_QUEUED,
                                                 POPUP_STATE_SHOWING)) {
     ImGui::OpenPopup ("Accept remote audio unmute request");
-  } else if (g_atomic_int_compare_and_exchange (&application->referal_request.popup_state, POPUP_STATE_QUEUED,
+  } else if (atomic_cas_int (&application->referal_request.popup_state, POPUP_STATE_QUEUED,
                                                 POPUP_STATE_SHOWING)) {
     ImGui::OpenPopup ("Referal request");
-  } else if (g_atomic_int_compare_and_exchange (&application->disconnected.popup_state, POPUP_STATE_QUEUED,
+  } else if (atomic_cas_int (&application->disconnected.popup_state, POPUP_STATE_QUEUED,
                                                 POPUP_STATE_SHOWING)) {
     ImGui::OpenPopup ("Call disconnected");
   }
@@ -11045,40 +11144,18 @@ configure_popups (PexNinja * application)
 
 #if defined(HOST_LINUX)
 
-#include <gst/app/gstappsink.h>
-#include <gst/gst.h>
-
+/* The original implementation decoded the PNG via a small GStreamer pipeline
+ * (filesrc ! pngdec ! videoconvert ! appsink). GStreamer has been removed from
+ * pexninja because it clashes with the copy statically linked into libpexlgpl,
+ * so this is now a no-op: returning NULL simply leaves the window icon unset,
+ * which set_window_icon() already handles gracefully. */
 static uint8_t *
 load_png (const char * filepath, int width, int height)
 {
-  uint8_t * data = NULL;
-  gsize datalen;
-  gchar * launchline = g_strdup_printf ("filesrc location=\"%s\" ! pngdec ! videoconvert ! capsfilter "
-                                        "caps=\"video/x-raw, format=RGBA, width=%d, height=%d\" ! appsink name=asink",
-                                        filepath, width, height);
-  GstElement * pipeline = gst_pipeline_new ("decode-png");
-  GstElement * appsink;
-  GstSample * sample = NULL;
-  GstBuffer * buffer = NULL;
-
-  gst_bin_add (GST_BIN_CAST (pipeline), gst_parse_bin_from_description (launchline, TRUE, NULL));
-
-  appsink = gst_bin_get_by_name (GST_BIN_CAST (pipeline), "asink");
-  gst_element_set_state (pipeline, GST_STATE_PLAYING);
-
-  sample = gst_app_sink_pull_sample (GST_APP_SINK_CAST (appsink));
-  buffer = gst_sample_get_buffer (sample);
-
-  gst_buffer_extract_dup (buffer, 0, gst_buffer_get_size (buffer), (gpointer *)&data, &datalen);
-
-  gst_sample_unref (sample);
-  gst_object_unref (appsink);
-  g_free (launchline);
-
-  gst_element_set_state (pipeline, GST_STATE_NULL);
-  gst_object_unref (pipeline);
-
-  return data;
+  (void) filepath;
+  (void) width;
+  (void) height;
+  return NULL;
 }
 
 static void
@@ -11094,7 +11171,7 @@ set_window_icon (GLFWwindow * window, const char * filepath)
     img.height = 128;
     img.pixels = (unsigned char *)data;
     glfwSetWindowIcon (window, 1, &img);
-    g_free (data);
+    free (data);
   }
 }
 
@@ -11103,24 +11180,15 @@ set_window_icon (GLFWwindow * window, const char * filepath)
 static void
 setup_env ()
 {
-  /* if GST_DEBUG_FILE is set from outside, respect that and do not setup any logging */
-  if (g_getenv ("GST_DEBUG_FILE") == NULL) {
+  /* Route Pulse's internal logging through our native logger (see
+   * _logger_callback), which writes to stdout/stderr. Set PEXNINJA_LOG_FILE to
+   * redirect it to a file instead. */
+  FILE * log_file = nullptr;
+  const char * log_path = getenv ("PEXNINJA_LOG_FILE");
+  if (log_path != nullptr && log_path[0] != '\0')
+    log_file = fopen (log_path, "a"); /* deliberately kept open for the process lifetime */
 
-    if (g_getenv ("LOG_TO_CONSOLE") == NULL) {
-      const gchar * tmpdir = g_get_tmp_dir ();
-      gchar * debugfile = g_strdup_printf ("%s" G_DIR_SEPARATOR_S "pexninja-%%p.log", tmpdir);
-
-      g_setenv ("GST_DEBUG_FILE", debugfile, FALSE);
-      g_setenv ("GST_DEBUG_FILE_NO_COLOR", "1", FALSE);
-
-      g_free (debugfile);
-
-    } else {
-      pulse_global_logger_callback (_logger_callback, nullptr);
-    }
-  }
-
-  GST_DEBUG_CATEGORY_INIT (pexninja_debug, "pexninja", GST_DEBUG_BOLD, "PexNinja debug category");
+  pulse_global_logger_callback (_logger_callback, log_file);
 }
 
 void
@@ -11405,7 +11473,7 @@ get_video_mix_input_from_device (PexNinja * application, PexNinjaState::PexNinja
 {
   PulseError err = pulse_video_mix_input_from_device (application->client, device, &vm.camera_input);
   if (err != PULSE_SUCCESS) {
-    GST_WARNING ("Failed to acquire camera input: %s", pulse_strerror (err));
+    PEX_LOG_WARNING ("Failed to acquire camera input: %s", pulse_strerror (err));
     vm.camera_input = PULSE_VIDEO_MIX_INPUT_ID_NONE;
     return;
   }
@@ -11474,7 +11542,7 @@ connect_selected_devices (PexNinja * application, Pulse * client)
 void
 update_color_shift (void)
 {
-  static bool shift_rotation = TRUE;
+  static bool shift_rotation = true;
   static float shift_value = 0;
   shift_value += (shift_rotation) ? 0.1f : -0.1f;
   if (shift_value <= 0.0f || shift_value >= 1.0f)
@@ -11982,7 +12050,7 @@ draw_overlay_menu (PexNinja * application)
 
         PulseError err = pulse_disconnect_async (application->client, &async_op_cb_config, &progress_config);
         if (err != PULSE_SUCCESS) {
-          GST_DEBUG ("pulse_disconnect failed: %s\n", pulse_strerror (err));
+          PEX_LOG_DEBUG ("pulse_disconnect failed: %s\n", pulse_strerror (err));
         } else {
           application->state.async_op.op = ASYNC_OP_DISCONNECT;
         }
@@ -12004,14 +12072,14 @@ main (int argc, const char ** argv)
   _update_conference_status_msg (&application, "application init");
 
 #if defined(HOST_WINDOWS)
-  if (argc >= 2 && g_str_has_prefix (argv[1], "pexip-auth://")) {
-    gchar * token = _pexninja_extract_sso_token (argv[1]);
+  if (argc >= 2 && pex_str_has_prefix (argv[1], "pexip-auth://")) {
+    char * token = _pexninja_extract_sso_token (argv[1]);
     if (token) {
       if (pulse_ipc_write_line (PEXNINJA_SSO_IPC_NAME, token) != PULSE_SUCCESS) {
         // give a chance to see the error before closing
         getchar ();
       }
-      g_free (token);
+      free (token);
     }
     return 0;
   }
@@ -12034,13 +12102,13 @@ main (int argc, const char ** argv)
   application.window = create_window (&application);
 
 #if defined(HOST_LINUX)
-  if (g_getenv ("RUNNING_FROM_LAUNCHER"))
+  if (getenv ("RUNNING_FROM_LAUNCHER"))
     set_window_icon (application.window, "/opt/pexninja/img/pexninja.png");
 #elif defined(HOST_WINDOWS)
   {
     HRESULT hr = _pexninja_register_app_url_handler (argv[0]);
     if (!SUCCEEDED (hr)) {
-      GST_ERROR ("app-scheme registration failed with error: %d. SSO handling will not be possible", hr);
+      PEX_LOG_ERROR ("app-scheme registration failed with error: %d. SSO handling will not be possible", hr);
     }
   }
 #endif
@@ -12050,10 +12118,10 @@ main (int argc, const char ** argv)
   pulse_register_device_list_changed_callback (client, PULSE_MEDIA_VIDEO, on_devices_changed, client);
   pulse_register_device_list_changed_callback (client, PULSE_MEDIA_AUDIO, on_devices_changed, client);
 
-  application.state.mic_audio_levels = g_async_queue_new ();
+  application.state.mic_audio_levels = new AudioLevelQueue ();
 
   pulse_set_max_bitrate (client, DEFAULT_TX_KBPS * 1000);
-  pulse_options_set_direct_chat_supported (client, TRUE);
+  pulse_options_set_direct_chat_supported (client, true);
 
   PulseDataSessionConfig * config;
   GLTextureContext mainvideo_ctx;
@@ -12091,7 +12159,7 @@ main (int argc, const char ** argv)
     }
 #endif
   }
-  GST_INFO ("BACKGROUND_PATH: %s", background_image_name);
+  PEX_LOG_INFO ("BACKGROUND_PATH: %s", background_image_name);
 
   pulse_options_set_background_image (client, background_image_name);
   if (application.config.options.mute_audio_on_startup) {
@@ -12110,7 +12178,7 @@ main (int argc, const char ** argv)
 
     if (application.state.update_window_title) {
       _set_window_title (&application);
-      application.state.update_window_title = FALSE;
+      application.state.update_window_title = false;
     }
 
     pull_media_stats (&application);
@@ -12347,7 +12415,7 @@ main (int argc, const char ** argv)
   pulse_deregister_device_list_changed_callback (client, PULSE_MEDIA_AUDIO);
 
   pulse_deregister_device_audio_level_callback (client, PULSE_MEDIA_INPUT);
-  g_async_queue_unref (application.state.mic_audio_levels);
+  delete application.state.mic_audio_levels;
 
   cleanup_devices (camera_devices);
   cleanup_devices (speaker_devices);
@@ -12376,7 +12444,7 @@ main (int argc, const char ** argv)
   {
     HRESULT hr = _pexninja_deregister_app_url_handler ();
     if (!SUCCEEDED (hr)) {
-      GST_ERROR ("app-scheme de-registration failed with error: %d.", hr);
+      PEX_LOG_ERROR ("app-scheme de-registration failed with error: %d.", hr);
     }
   }
 #endif
