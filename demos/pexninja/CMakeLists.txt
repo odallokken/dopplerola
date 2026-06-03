@@ -12,7 +12,7 @@
 # goes to stdout/stderr). No GLib/GStreamer packages are required any more.
 #
 # We keep this build self-contained — the parent CMakeLists.txt just calls
-# add_subdirectory(pexninja). Run `cmake --build build --target pexninja` to
+# add_subdirectory(demos/pexninja). Run `cmake --build build --target pexninja` to
 # build just this one binary. It builds on Linux and macOS.
 # ---------------------------------------------------------------------------
 
@@ -189,7 +189,7 @@ target_compile_options(pexninja PRIVATE
 # RPATH so libpexpulse resolves without LD_LIBRARY_PATH for the direct
 # dependency. Unlike the main doppler target's hardcoded <prefix>/lib, we use
 # the directory the library was actually found in (PEXPULSE_LIBDIR) so this
-# works cross-platform — including macOS, where the dylibs ship under macOs/.
+# works cross-platform — including macOS, where the dylibs ship under sdk/macos/.
 set_target_properties(pexninja PROPERTIES
     BUILD_RPATH   "${PEXPULSE_LIBDIR}"
     INSTALL_RPATH "${PEXPULSE_LIBDIR}")

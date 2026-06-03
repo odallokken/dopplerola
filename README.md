@@ -1,272 +1,102 @@
-# Doppler
+# Pexip Pulse — Showcase
 
-A small demo that makes a Pexip Infinity video call using the
-**Pexip Pulse** C API, with **Dear ImGui** as the application layer.
+A collection of small, self-contained **demo applications** built on the
+**Pexip Pulse** SDK. Each demo highlights a slice of what Pulse can do, and is
+designed so you can `cd` into it, read a short README, run two or three
+commands, and see it work.
 
-The goal of this repository is to show — with as little glue as possible —
-how to drive Pulse from your own application. Beyond placing a call, the
-demo also doubles as a tiny reference for three slightly more advanced
-Pulse building blocks lifted from `pexninja/pexninja.cpp`:
+New to Pulse? Start with [`doppler`](demos/doppler/) (a video call in one file),
+then browse [`pexninja`](demos/pexninja/) when you want to see the full breadth
+of the SDK. Extending the repo? Read [`AGENTS.md`](AGENTS.md) and
+[`docs/adding-a-demo.md`](docs/adding-a-demo.md).
 
-* In-window rendering of the incoming MAIN video and the self-view via
-  `pulse_data_session_connect_output` + an OpenGL texture.
-* An RTMP ingest listener via `pulse_rtmp_session_connect_input`.
-* A "Twitch streaming" video mix that composites the local camera on
-  top of the RTMP feed via `pulse_video_mix_connect`, with optional
-  camera segmentation (`PULSE_VIDEO_PROCESS_TYPE_SEGMENTATION`).
+## The demos
 
-The whole thing still fits in a single, heavily-commented
-`src/main.cpp` plus one small `CMakeLists.txt`.
+| Demo | What it shows | Platform / build |
+| ---- | ------------- | ---------------- |
+| [**doppler**](demos/doppler/) | A Pexip Infinity video call in one heavily-commented file: connect over REST, render the remote + self-view yourself, plus RTMP ingest and a camera-on-RTMP "Twitch mix". | C++ / CMake · built by default |
+| [**gateway**](demos/gateway/) | Two Pulse instances bridged together, relaying raw audio + video between two conferences using only the data-session input/output APIs — a tiny cross-domain "guard". | C++ / CMake · built by default |
+| [**sip**](demos/sip/) | Pulse used purely as a media engine, with **PJSIP** doing the SIP signalling (manual SDP offer/answer). No Pexip Infinity node required. | C++ / CMake · opt-in (needs PJSIP) |
+| [**pexninja**](demos/pexninja/) | The full reference client (~12k LoC) exercising the **widest array** of Pulse functionality — conference control, roster, devices, annotation, media stats and much more. | C++ / CMake · opt-in (extra deps) |
+| [**android**](demos/android/) | A Kotlin/Gradle sample app using the **Pulse Android SDK**: preflight, join, roster, chat, screen share, media stats. | Android / Gradle |
 
-```
-┌─────────────────────────────────────────────┐
-│         ImGui (GLFW + OpenGL3)              │
-│                                             │
-│  Server / Conference / ...   [Connect]      │
-│  RTMP path / port            [Start RTMP]   │
-│  [x] Camera segmentation     [Twitch mix]   │
-│                                             │
-│  ┌──────── Remote ────────┐  ┌─ Self-view ─┐│
-│  │  (pulled from MAIN     │  │ (pulled    ││
-│  │   data-session)        │  │  from      ││
-│  │                        │  │  SELFVIEW) ││
-│  └────────────────────────┘  └────────────┘│
-└──────────────────────┬──────────────────────┘
-                       │ pulse_connect_with_rest_async()
-                       │ pulse_rtmp_session_connect_input()
-                       │ pulse_video_mix_connect()
-                       ▼
-                ┌───────────────┐
-                │  libpexpulse  │
-                └───────────────┘
-```
+## 1. Install the Pexip Pulse runtime
 
-## What's in the box
+The C/C++ demos link against the Pulse library + headers. The SDK artifacts ship
+in this repo under [`sdk/`](sdk/), organised by platform.
 
-| File                    | Purpose                                           |
-| ----------------------- | ------------------------------------------------- |
-| `src/main.cpp`          | The whole application — heavily commented.        |
-| `src/gateway.cpp`       | A sibling app (`pulse_gateway`) that runs two Pulse instances and bridges raw audio + video between two conferences. |
-| `CMakeLists.txt`        | Build glue. Fetches Dear ImGui via FetchContent.  |
-| `debs/`                 | Pre-built Pulse `.deb` packages for Ubuntu 24.04. |
-| `opt/`, `usr/`          | The extracted contents of the Pulse `.deb`s.      |
-| `pexninja/`             | The much larger reference Pulse client (optional, see below). |
-| `sip-demo/`             | A second tiny demo: Pulse as media engine + PJSIP for signalling (optional, see below). |
-| `scripts/`              | Helper scripts: `install-pjsip.sh` / `uninstall-pjsip.sh`.     |
+### Linux (Ubuntu 24.04)
 
-## Build
-
-### 1. Install the Pexip Pulse runtime + headers
-
-The Pulse packages need a couple of system libs (`libpulse0`, `libspeex1`,
-`libxv1`, ...).  `apt -f install` will pull them in for you:
+Install the `.deb` packages — `apt -f install` pulls in the couple of system
+libs they need (`libpulse0`, `libspeex1`, `libxv1`, ...):
 
 ```bash
-sudo dpkg -i debs/libpexcommon_*.deb \
-             debs/libpexpulse_*.deb  \
-             debs/libpexpulse-dev_*.deb
+sudo dpkg -i sdk/linux/debs/libpexcommon_*.deb \
+             sdk/linux/debs/libpexpulse_*.deb  \
+             sdk/linux/debs/libpexpulse-dev_*.deb
 sudo apt-get install -f
 ```
 
 This installs the headers under `/opt/pexip/include` and the shared library
 under `/opt/pexip/lib`.
 
-### 2. Install the build dependencies
+### macOS
+
+The Pulse dylibs ship under [`sdk/macos/`](sdk/macos/); point CMake at them with
+`-DPEXIP_PREFIX="$(pwd)/sdk/macos"` (see the per-demo READMEs).
+
+## 2. Install the build dependencies
 
 ```bash
 sudo apt-get install -y cmake build-essential \
                         libglfw3-dev libgl1-mesa-dev
 ```
 
-### 3. Configure and build
+Individual demos may need a little more (e.g. `pexninja` wants `libx11-dev`,
+`sip` needs PJSIP) — each demo's README spells out its extras.
+
+## 3. Build & run
+
+The build is a thin orchestrator: every demo is a CMake sub-project gated behind
+a `BUILD_<DEMO>` option. The lightweight demos build by default:
 
 ```bash
 cmake -S . -B build
 cmake --build build -j
+./build/run-doppler.sh          # or ./build/run-pulse-gateway.sh
 ```
 
-On the first run CMake fetches Dear ImGui from GitHub (≈ 5 MB).
+On the first configure, CMake fetches Dear ImGui from GitHub (≈ 5 MB). Enable
+the opt-in demos with their options, e.g. `-DBUILD_PEXNINJA=ON` or
+`-DBUILD_DOPPLER_SIP=ON` — see each demo's README for details.
 
-### 4. Run
-
-```bash
-./build/run-doppler.sh
-```
-
-The launcher script (generated by CMake) just sets `LD_LIBRARY_PATH` to
-`/opt/pexip/lib` and execs the binary — this is needed because
-`libpexpulse.so`'s private siblings (`libpexlgpl.so`, `libimf.so`,
-`libonnxruntime.so.1`, …) are installed alongside it in `/opt/pexip/lib`
-and have to be on the dynamic-linker search path.  If you'd rather not use
-the wrapper, either:
+Each demo ships a generated `run-<demo>.sh` launcher that puts Pulse's private
+sibling libraries on the dynamic-linker search path. If you'd rather run the
+binary directly:
 
 ```bash
-LD_LIBRARY_PATH=/opt/pexip/lib ./build/doppler
+LD_LIBRARY_PATH=/opt/pexip/lib ./build/demos/doppler/doppler
 # or, system-wide:
 echo /opt/pexip/lib | sudo tee /etc/ld.so.conf.d/pexip.conf && sudo ldconfig
 ```
 
-Fill in the **Server** (your Pexip Infinity node, e.g. `vc.example.com`),
-the **Conference** alias and a **Display name**, then press **Connect**.
-The far-end video and your own self-view will be rendered directly into
-the ImGui window (Pulse's auto-spawn windows are disabled via
-`pulse_options_set_*_window_handle(NULL)`).
-
-### RTMP ingest + "Twitch mix"
-
-Open the **RTMP ingest + Twitch mix** section in the UI, pick a port +
-path (defaults: `1935` / `live`), and press **Start RTMP server**. Then
-publish a stream to it from OBS or ffmpeg, e.g.:
-
-```bash
-ffmpeg -re -i some-video.mp4 -c:v libx264 -c:a aac -f flv \
-       rtmp://localhost:1935/live
-```
-
-Press **Enable Twitch mix** and Pulse will composite your camera as a
-PIP on top of the RTMP feed and send the result as the MAIN outgoing
-video. Toggle **Camera segmentation** to key out your camera background
-for the full Twitch streaming look.
-
-> The binary has its RPATH set to `/opt/pexip/lib`, so the direct dependency
-> `libpexpulse.so` is found without help.  The launcher script handles the
-> transitive deps for you.
-
-## Code tour
-
-`src/main.cpp` walks you through the lifecycle steps inline:
-
-1. `pulse_new()` — create a Pulse instance.
-2. `pulse_options_set_*()` — register a small set of callbacks
-   (`conference state`, `application user-agent`) and pin the video
-   window handles to `NULL` so Pulse won't auto-spawn its own windows.
-3. `pulse_data_session_connect_output()` — open RGBA "pull" sessions
-   for MAIN and SELFVIEW so we can render the frames ourselves.
-4. `pulse_connect_with_rest_async()` — kick off the call.
-   The progress and async-result callbacks feed our status panel.
-5. `pulse_disconnect_async()` — tear it down.
-6. `pulse_free()` — release the handle.
-
-On top of that, the demo wires in the RTMP ingest + video MIX building
-blocks: `pulse_rtmp_session_connect_input()` opens an RTMP listener on
-the PRESENTATION slot, and `pulse_video_mix_input_from_device` +
-`pulse_video_mix_input_from_rtmp_session` + `pulse_video_mix_connect`
-composite the camera on top of the RTMP feed (optionally with
-`PULSE_VIDEO_PROCESS_TYPE_SEGMENTATION`) and ship the result out on
-MAIN.
-
-Everything else (the GLFW window, the ImGui form, the status text, the
-video tiles, the RTMP + mix wiring) is just plumbing around those calls.
-The bigger sibling `pexninja/pexninja.cpp` is where all of these patterns
-were lifted from — it's the place to look when you outgrow the demo.
-
-## The `pulse_gateway` sibling demo
-
-`src/gateway.cpp` builds into a second binary, `pulse_gateway`, that
-demonstrates how to use the Pulse data-session **input** *and* **output**
-APIs together to build a "two-Pulse bridge".
-
-Two independent Pulse instances each place their own call:
+## Repository layout
 
 ```
-        ┌─────────┐     OUTPUT (raw I420 / F32LE)     ┌─────────┐
-        │ pulse 1 │ ────────────────────────────────► │ pulse 2 │
-Conf A ─┤         │                                   │         ├─ Conf B
-        │         │ ◄──────────────────────────────── │         │
-        └─────────┘     OUTPUT (raw I420 / F32LE)     └─────────┘
-                       (pushed into the other leg's INPUT)
+demos/      One folder per demo (source + README + CMakeLists).
+sdk/        The Pulse SDK artifacts: linux/ (debs + extracted), macos/, windows/.
+cmake/      Shared CMake helpers (PulseDemo.cmake).
+docs/       adding-a-demo.md, a DEMO_TEMPLATE/ skeleton, and api/ — the
+            generated Pulse C API reference (open docs/api/index.html).
+scripts/    Helper scripts (e.g. install-pjsip.sh).
+AGENTS.md   How to relate to the Pulse SDK and extend this repo.
 ```
 
-A small background thread pumps `pulse_data_session_pull_frame_data`
-from one leg's OUTPUT straight into `pulse_data_session_push_frame` on
-the other leg's INPUT, both for audio (F32LE PCM, 48 kHz, mono) and
-video (I420 planar YUV).  No system mic, camera or speaker is ever
-touched — the data sessions take their place entirely.
+## Adding your own demo
 
-For the on-screen preview tiles the pump thread converts I420 to RGBA
-on the CPU (BT.601 limited-range) before handing the buffer to the UI
-thread, so the GL upload path stays trivial.
-
-Because everything that crosses the gap is raw, decoded samples — no
-container, no signalling, no metadata — the bridge is the kind of
-"guard" you'd put at the boundary of a **cross-domain solution**: by
-construction the only thing that can pass through is honest audio and
-video.
-
-The ImGui UI has two side-by-side panels (one per leg) with their own
-**Call** / **Hang up** buttons, plus live counters of audio/video bytes
-and frames being forwarded in each direction, and a small RGBA preview
-of what each leg is relaying.
-
-Build + run:
-
-```bash
-cmake --build build -j --target pulse_gateway
-./build/run-pulse-gateway.sh
-```
-
-
-
-`pexninja/` contains a much fuller Pulse client (~12k LoC, lifted from
-another repo). It uses the same `libpexpulse` but layers in ImPlot,
-gl3w and ImGui-Addons (file browser). It's gated behind a CMake
-option so the default `doppler` build stays lean:
-
-```bash
-sudo apt-get install -y libx11-dev libglfw3-dev libgl1-mesa-dev
-cmake -S . -B build -DBUILD_PEXNINJA=ON
-cmake --build build -j --target pexninja
-./build/run-pexninja.sh
-```
-
-`pexninja` no longer depends on GLib or GStreamer. Those were previously
-pulled in only for logging and a few string/queue helpers, which now use
-native C++/POSIX code. This avoids a runtime clash with the GLib/GStreamer
-copies that `libpexlgpl` links statically.
-
-The extra dependencies (ImPlot, gl3w, ImGui-Addons) are fetched at configure
-time via `FetchContent`. The Dear ImGui tag is the `-docking` variant
-because `pexninja` uses multi-viewport + docking features; the simpler
-`doppler` target keeps building unchanged against the same superset.
-
-### Building `pexninja` on macOS
-
-The repo ships the macOS Pulse libraries under `macOs/`
-(`libpexpulse.dylib`, `libpexlgpl.dylib`). Install GLFW via Homebrew and
-enable the same option; the build links the CoreGraphics, CoreFoundation
-and AppKit frameworks instead of X11:
-
-```bash
-brew install glfw
-cmake -S . -B build -DBUILD_PEXNINJA=ON \
-      -DPEXIP_PREFIX="$(pwd)/macOs"
-cmake --build build -j --target pexninja
-```
-
-## Building the `doppler-sip` SIP-mode demo
-
-`sip-demo/` is a second tiny demo (close in spirit to the main `doppler`
-demo) that uses Pulse as a *media engine only*. Signalling is handled by
-**PJSIP**: Pulse generates an SDP offer, PJSIP places a SIP `INVITE`, and
-the 200 OK's answer SDP is fed back into Pulse. No REST, no Pexip Infinity
-node required - any SIP endpoint will do.
-
-PJSIP isn't packaged for Ubuntu 24.04, so we ship a helper that builds and
-installs it under `/usr/local`:
-
-```bash
-sudo ./scripts/install-pjsip.sh
-cmake -S . -B build -DBUILD_DOPPLER_SIP=ON
-cmake --build build -j --target doppler-sip
-./build/run-doppler-sip.sh
-```
-
-To remove a PJSIP install done by the script (e.g. to upgrade to a newer
-version), use the matching uninstaller:
-
-```bash
-sudo ./scripts/uninstall-pjsip.sh           # or --dry-run to preview
-```
-
-See [`sip-demo/README.md`](sip-demo/README.md) for the flow diagram and
-the per-file walk-through.
+The repo is built to grow. Copy [`docs/DEMO_TEMPLATE/`](docs/DEMO_TEMPLATE/),
+drop in your source, wire up a few lines of CMake using the shared helpers, and
+add a row to the table above. The full walk-through — including the conventions
+that keep every demo easy to build and run — is in
+[`docs/adding-a-demo.md`](docs/adding-a-demo.md), and the SDK orientation for
+agents and humans alike is in [`AGENTS.md`](AGENTS.md).

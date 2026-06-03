@@ -4,7 +4,7 @@ A tiny demo that places a **SIP** video call using the Pexip **Pulse** C API
 as the media engine, with **PJSIP** doing the SIP signalling and **Dear ImGui**
 as the application layer.
 
-The companion to `src/main.cpp` (which talks to a Pexip Infinity conference
+The companion to the [`doppler`](../doppler/) demo (which talks to a Pexip Infinity conference
 directly via Pulse's built-in REST client). Here Pulse never speaks to a
 conferencing node itself — we use the two-stage manual setup path so we own
 the SDP exchange, and we hand that SDP off to PJSIP which puts it on the
@@ -63,12 +63,12 @@ wire in an `INVITE`.
 
 ## Prerequisites
 
-In addition to the [main repository's build deps](../README.md), you need
+In addition to the [main repository's build deps](../../README.md), you need
 PJSIP. **PJSIP is *not* in the Ubuntu 24.04 archive**, so we ship a small
 helper script that downloads, builds and installs it under `/usr/local`:
 
 ```bash
-sudo ../scripts/install-pjsip.sh
+sudo ./scripts/install-pjsip.sh
 ```
 
 (The script is idempotent. It installs `libpjproject.pc` into pkg-config's

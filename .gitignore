@@ -3,3 +3,7 @@ build/
 *.a
 .cache/
 compile_commands.json
+
+# Dev scratch / run logs
+run.log
+run_*.txt
