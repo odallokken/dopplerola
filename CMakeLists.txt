@@ -140,6 +140,18 @@ if(BUILD_PEXNINJA)
     add_subdirectory(pexninja)
 endif()
 
+# ---------------------------------------------------------------------------
+# Optional: doppler-sip, a second tiny demo that drives Pulse purely as a
+# media engine, with SIP signalling done by PJSIP. Disabled by default
+# because it needs PJSIP (which isn't in the Ubuntu archive - see
+# scripts/install-pjsip.sh). Flip BUILD_DOPPLER_SIP on (e.g.
+# `cmake -S . -B build -DBUILD_DOPPLER_SIP=ON`) to build it.
+# ---------------------------------------------------------------------------
+option(BUILD_DOPPLER_SIP "Build the SIP-signalling Pulse demo (needs PJSIP)" OFF)
+if(BUILD_DOPPLER_SIP)
+    add_subdirectory(sip-demo)
+endif()
+
 file(GENERATE
     OUTPUT  "${CMAKE_BINARY_DIR}/run-doppler.sh"
     CONTENT "#!/bin/sh

@@ -1,0 +1,994 @@
+16:36:11.511         os_core_unix.c !pjlib 2.14.1 for POSIX initialized
+16:36:11.511         sip_endpoint.c  Creating endpoint instance...
+16:36:11.511                  pjlib  select() I/O Queue created (0x5a78f8bde8f8)
+16:36:11.511         sip_endpoint.c  Module "mod-msg-print" registered
+16:36:11.511        sip_transport.c  Transport manager created.
+16:36:11.511            tcptp:39289  SIP TCP listener ready for incoming connections at 10.47.104.51:39289
+16:36:11.511         sip_endpoint.c  Module "mod-tsx-layer" registered
+16:36:11.511         sip_endpoint.c  Module "mod-stateful-util" registered
+16:36:11.511         sip_endpoint.c  Module "mod-ua" registered
+16:36:11.511         sip_endpoint.c  Module "mod-invite" registered
+16:36:11.511         sip_endpoint.c  Module "mod-100rel" registered
+16:36:11.511         sip_endpoint.c  Module "sipua-app" registered
+16:36:16.808218 188818 0x5a78f98dc310 WARNING         GST_REGISTRY gstregistry.c:2032:gst_update_registry:(NULL) registry update failed: registry disabled
+16:36:16.811692 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:1763:pmx_init:<PmxRoot@0x5a78f95c96b0> Initialize PEX
+16:36:16.822928 188818 0x5a78f98dc310 DEBUG    pulse_json_parser pulse_json_decoder.c:38:pulse_json_parser_global_init:(NULL) Initializing json parser global data.
+16:36:16.822948 188818 0x5a78f98dc310 INFO           pulse_fips pulse_fips.c:49:pulse_fips_log_status:(NULL) [cid:1] FIPS mode enabled and verified.
+16:36:16.822954 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:352:pmx_root_enable_msg_latency_reception:<PmxRoot@0x5a78f95c96b0> Configure pipeline to react on GST_MESSAGE_LATENCY
+16:36:16.822961 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:153:pmx_root_create_participant:<PmxRoot@0x5a78f95c96b0> Create ParticipantID(0)
+16:36:16.822986 188818 0x5a78f98dc310 INFO  pmx_jitterman_debug pmxjitterman.c:273:pmx_jitter_man_set_latency:(NULL) Try to set Latency(1 ms)
+16:36:16.822993 188818 0x5a78f98dc310 INFO  pmx_jitterman_debug pmxjitterman.c:241:pmx_jitter_man_set_new_latency:(NULL) Set new Latency(1 ms)
+16:36:16.823006 188818 0x5a78f98dc310 DEBUG pulse_callback_control pulse_callback_control.c:29:pulse_callback_control_init:(NULL) Callback control init
+16:36:16.823222 188818 0x5a78f99d86b0 DEBUG        pulse_reactor pulse_reactor.c:63:_pulse_reactor_thread:(NULL) [cid:1 rid:1] asyncreactor-1 reactor starting
+16:36:16.824133 188818 0x5a78f98dc310 INFO  pulse_async_reactor pulse_async_reactor.c:127:pulse_async_reactor_init:(NULL) [cid:1 rid:1] Starting async reactor 'asyncreactor-1'
+16:36:16.824411 188818 0x5a78f99d8c60 DEBUG        pulse_reactor pulse_reactor.c:63:_pulse_reactor_thread:(NULL) [cid:1 rid:2] schedreactor-1 reactor starting
+16:36:16.825555 188818 0x5a78f98dc310 INFO   pulse_sched_rector pulse_sched_reactor.c:33:pulse_sched_reactor_init:(NULL) [cid:1 rid:2] Starting sched reactor 'schedreactor-1'
+16:36:16.825700 188818 0x5a78f99d9250 DEBUG        pulse_reactor pulse_reactor.c:63:_pulse_reactor_thread:(NULL) [cid:1 rid:3] pmxcbreactor-1 reactor starting
+16:36:16.826655 188818 0x5a78f98dc310 INFO pulse_pmx_cb_reactor pulse_pmx_cb_reactor.c:16:pulse_pmx_cb_reactor_init:(NULL) [cid:1 rid:3] Starting pmx-cb reactor 'pmxcbreactor-1'
+16:36:16.826670 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(0)
+16:36:16.826678 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f99d98b0> New SessionID(0) ParticipantID(0)
+16:36:16.835481 188818 0x5a78f98dc310 DEBUG                pulse pulsedeviceprovider.c:568:gst_pulse_device_provider_start:<pulsedeviceprovider0> connect to server (NULL)
+16:36:16.838528 188818 0x5a78f98dc310 DEBUG                pulse pulsedeviceprovider.c:593:gst_pulse_device_provider_start:<pulsedeviceprovider0> connected
+16:36:16.838780 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:16.954362 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.954384 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.954389 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:0,3:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.954501 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.954506 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.954510 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:0,7:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.954570 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.954574 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.954578 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:0,8:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.954633 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.954637 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.954641 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:0,9:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.954714 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.954718 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.954723 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:2,0:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.954796 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.954801 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.954804 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:3,0:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.968466 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.968486 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.968491 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:3,3:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.968611 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.968615 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.968619 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:3,4:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.968685 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.968691 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.968695 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:3,5:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.968763 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5569:parse_args:(NULL) alsalib error: Parameter DEV must be an integer
+16:36:16.968768 188818 0x5a78f98dc310 WARNING                 alsa conf.c:5711:snd_config_expand:(NULL) alsalib error: Parse arguments error: Invalid argument
+16:36:16.968772 188818 0x5a78f98dc310 WARNING                 alsa pcm.c:2721:snd_pcm_open_noupdate:(NULL) alsalib error: Unknown PCM hw:3,31:{AES0 0x02 AES1 0x82 AES2 0x00 AES3 0x02}
+16:36:16.968914 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:326:pmx_device_monitor_register:(NULL) GstDeviceMonitor started
+16:36:16.968927 188818 0x5a78f98dc310 INFO     pmx_device_debug pmxdevicectx.c:518:pmx_device_ctx_new:<PmxDeviceCtx@0x5a78f99d9c30> New PmxDeviceCtx (0x5a78f99d9c30)
+16:36:16.968934 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:504:pmx_device_session_set_video_device_list_changed_callback:<PmxDeviceSession@0x5a78f99d98b0> SessionID(0) Setting VideoDeviceListChange Callback (0x785be0391080) with user data (0x5a78f99d9a40)
+16:36:16.968943 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create audio SessionID(1)
+16:36:16.968949 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0e010> New SessionID(1) ParticipantID(0)
+16:36:16.968960 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(2)
+16:36:16.968964 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0e660> New SessionID(2) ParticipantID(0)
+16:36:16.968969 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(3)
+16:36:16.968973 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0e720> New SessionID(3) ParticipantID(0)
+16:36:16.968978 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create audio SessionID(4)
+16:36:16.968982 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0d910> New SessionID(4) ParticipantID(0)
+16:36:16.968987 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(5)
+16:36:16.968991 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a026f0> New SessionID(5) ParticipantID(0)
+16:36:16.968995 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(6)
+16:36:16.969000 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a027b0> New SessionID(6) ParticipantID(0)
+16:36:16.969005 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create audio SessionID(7)
+16:36:16.969009 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0e980> New SessionID(7) ParticipantID(0)
+16:36:16.969016 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(8)
+16:36:16.969021 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f99e40d0> New SessionID(8) ParticipantID(0)
+16:36:16.969025 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(9)
+16:36:16.969029 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f99e4190> New SessionID(9) ParticipantID(0)
+16:36:16.969034 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create audio SessionID(10)
+16:36:16.969039 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0ef20> New SessionID(10) ParticipantID(0)
+16:36:16.969043 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(11)
+16:36:16.969047 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0f3f0> New SessionID(11) ParticipantID(0)
+16:36:16.969052 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(12)
+16:36:16.969057 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0f4b0> New SessionID(12) ParticipantID(0)
+16:36:16.969062 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create audio SessionID(13)
+16:36:16.969066 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0f670> New SessionID(13) ParticipantID(0)
+16:36:16.969071 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(14)
+16:36:16.969075 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0f730> New SessionID(14) ParticipantID(0)
+16:36:16.969086 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <v4l2device0>
+16:36:16.969088 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(15)
+16:36:16.969115 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0fa00> New SessionID(15) ParticipantID(0)
+16:36:16.969120 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create audio SessionID(16)
+16:36:16.969125 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0fac0> New SessionID(16) ParticipantID(0)
+16:36:16.969130 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(17)
+16:36:16.969134 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0fce0> New SessionID(17) ParticipantID(0)
+16:36:16.969140 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(18)
+16:36:16.969144 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a0fea0> New SessionID(18) ParticipantID(0)
+16:36:16.969149 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create audio SessionID(19)
+16:36:16.969152 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a10090> New SessionID(19) ParticipantID(0)
+16:36:16.969156 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(20)
+16:36:16.969160 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a10220> New SessionID(20) ParticipantID(0)
+16:36:16.969169 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(21)
+16:36:16.969173 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a103b0> New SessionID(21) ParticipantID(0)
+16:36:16.969178 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create audio SessionID(22)
+16:36:16.969178 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <v4l2device1>
+16:36:16.969184 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a105d0> New SessionID(22) ParticipantID(0)
+16:36:16.969199 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(23)
+16:36:16.969203 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a107e0> New SessionID(23) ParticipantID(0)
+16:36:16.969208 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(24)
+16:36:16.969213 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9a109d0> New SessionID(24) ParticipantID(0)
+16:36:16.969217 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <v4l2device2>
+16:36:16.969240 188818 0x5a78f98dc310 INFO     pmx_device_debug pmxdevicectx.c:518:pmx_device_ctx_new:<PmxDeviceCtx@0x5a78f9a10bb0> New PmxDeviceCtx (0x5a78f9a10bb0)
+16:36:16.969245 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <v4l2device3>
+16:36:16.969246 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:519:pmx_device_session_set_audio_device_list_changed_callback:<PmxDeviceSession@0x5a78f9a0e010> SessionID(1) Setting AudioDeviceListChange Callback (0x785be033e5d0) with user data (0x5a78f9a104e0)
+16:36:16.969263 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:327:pmx_participant_create_gfx_session:(NULL) ParticipantID(0) Create SessionID(25)
+16:36:16.969272 188818 0x5a78f98dc310 INFO pmx_gfx_session_debug pmxgfxsession.c:42:pmx_gfx_session_new:<PmxGfxSession@0x5a78f9a10e30> New GfxSession ID(25) ParticipantID(0)
+16:36:16.969279 188818 0x5a78f98dc310 INFO pmx_gfx_session_debug pmxgfxsession.c:24:pmx_gfx_session_add_input:<PmxGfxSession@0x5a78f9a10e30> GfxSessionID(25) Add input InputID(0) 
+16:36:16.969284 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <v4l2device4>
+16:36:16.969315 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice0>
+16:36:16.969347 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice1>
+16:36:16.969376 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice2>
+16:36:16.969407 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice3>
+16:36:16.969433 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice4>
+16:36:16.969459 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice5>
+16:36:16.969484 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice6>
+16:36:16.969509 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice7>
+16:36:16.969533 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice8>
+16:36:16.969558 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice9>
+16:36:16.969582 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice10>
+16:36:16.969606 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice11>
+16:36:16.969630 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice12>
+16:36:16.969659 188818 0x5a78f99cac40 INFO pmx_device_monitor_debug pmxdevicemonitor.c:202:pmx_device_monitor_on_device_list_changed_unlocked:<PmxDeviceMonitor@0x5a78f9775120> Device list changed - message device-added - device <pulsedevice13>
+16:36:16.971472 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:368:pmx_participant_create_data_session:(NULL) ParticipantID(0) Create DataSession ID(26)
+16:36:16.971486 188818 0x5a78f98dc310 INFO pmx_data_session_debug pmxdatasession.c:128:pmx_data_session_new:<PmxDataSession@0x5a78f99d9e20> New DataSession ID(26) ParticipantID(0)
+16:36:16.971503 188818 0x5a78f98dc310 INFO pmx_data_session_debug pmxdatasession.c:28:pmx_data_session_add_input:<PmxDataSession@0x5a78f99d9e20> DataSessionID(26) Add input InputID(1) Caps(video/x-raw, media=(string)video, format=(string)RGB, width=(int)128, height=(int)96, framerate=(fraction)30/1)
+16:36:16.972636 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc_1> caps: (NULL)
+16:36:16.972705 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc_1> caps: (NULL)
+16:36:16.972745 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc_1> starting
+16:36:16.972968 188818 0x5a78f98dc310 INFO pmx_data_session_debug pmxdatasession.c:28:pmx_data_session_add_input:<PmxDataSession@0x5a78f99d9e20> DataSessionID(26) Add input InputID(2) Caps(audio/x-raw, format=(string)F32LE, rate=(int)48000, channels=(int)1, layout=(string)interleaved)
+16:36:16.973122 188818 0x785b88000e40 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc_1> unlock stop
+16:36:16.973460 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc_2> caps: (NULL)
+16:36:16.973491 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc_2> caps: (NULL)
+16:36:16.973516 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc_2> starting
+16:36:16.973659 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:345:pmx_participant_create_rtp_session:(NULL) ParticipantID(0) Create SessionID(27)
+16:36:16.973687 188818 0x5a78f98dc310 INFO pmx_sessionbwman_debug pmxsessionbwman.c:320:pmx_session_bw_man_set_participant_max_tx_kbps:(NULL) SessionID(27) Set Participant MaxTxKbps(4096)
+16:36:16.973692 188818 0x5a78f98dc310 INFO pmx_sessionbwman_debug pmxsessionbwman.c:299:pmx_session_bw_man_set_max_tx_kbps:(NULL) SessionID(27) Set MaxTxKbps(4096)
+16:36:16.973701 188818 0x5a78f98dc310 INFO pmx_rtp_session_debug pmxrtpsession.c:1535:pmx_rtp_session_new:<PmxRtpSession@0x5a78f9a5db20> New SessionID(27) ParticipantID(0) BWMan(0x5a78f9a5ffb0) StatsMan(0x5a78f99d7bb0)
+16:36:16.973710 188818 0x5a78f98dc310 INFO           pexpapabin pexpapabin.c:260:pex_papa_bin_create_recv_pad:<pexpapabin0> create pad send_sink_0_27
+16:36:16.973834 188818 0x785b880010b0 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc_2> unlock stop
+16:36:16.974335 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc2> caps: (NULL)
+16:36:16.974794 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc2> starting
+16:36:16.974974 188818 0x785b88001320 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc2> unlock stop
+16:36:16.975240 188818 0x5a78f98dc310 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtp_src_27 from rtpbin (0x5a78f9a61c60)
+16:36:16.975252 188818 0x5a78f98dc310 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtp_sink_27 from rtpbin (0x5a78f9a61c60)
+16:36:16.975732 188818 0x5a78f98dc310 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtcp_src_27 from rtpbin (0x5a78f9a61c60)
+16:36:16.975941 188818 0x5a78f98dc310 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:recv_rtp_sink_27 from rtpbin (0x5a78f9a61c60)
+16:36:16.976028 188818 0x5a78f98dc310 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:recv_rtcp_sink_27 from rtpbin (0x5a78f9a61c60)
+16:36:16.976914 188818 0x5a78f98dc310 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x5a78f9ae34d0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:16.976930 188818 0x5a78f98dc310 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, rtcp-interval=(guint64)200000000;
+16:36:16.976940 188818 0x5a78f98dc310 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x5a78f9ae34d0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:16.976946 188818 0x5a78f98dc310 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, transport-stats-notify-interval=(uint)200;
+16:36:16.976955 188818 0x5a78f98dc310 INFO pmx_rtp_session_debug pmxrtpsession.c:1137:pmx_rtp_session_set_jb_latency:<PmxRtpSession@0x5a78f9a5db20> SessionID(27) Set JitterBuffer latency(1 ms)
+16:36:16.976973 188818 0x5a78f98dc310 DEBUG           pulse_curl pulse_curl.c:114:_pulse_curl_global_init:(NULL) In curl global initializer
+16:36:16.977027 188818 0x5a78f99cac40 INFO pmx_sessionbwman_debug pmxsessionbwman.c:422:_notify_new_bitrate_async:(NULL) About to notify new bitrate: 4096000
+16:36:16.977043 188818 0x5a78f98dc310 DEBUG           pulse_curl pulse_curl.c:368:_pulse_curl_multi_handle_thread_init:(NULL) Curl multi handle thread initializing...
+16:36:16.977098 188818 0x5a78f9ae7900 INFO           pulse_curl pulse_curl.c:303:_pulse_curl_multi_handle_thread:(NULL) Curl multi handle thread running.
+16:36:16.977124 188818 0x5a78f98dc310 INFO pulse_network_monitor pulse_network_monitor.c:460:pulse_network_monitor_init:(NULL) [cid:1] Starting pulse_network_monitor
+16:36:16.979675 188818 0x5a78f9b03160 DEBUG        pulse_reactor pulse_reactor.c:63:_pulse_reactor_thread:(NULL) [cid:1 rid:4] p-netmon-reactor reactor starting
+16:36:16.980657 188818 0x5a78f98dc310 INFO pulse_network_monitor pulse_network_monitor.c:507:pulse_network_monitor_init:(NULL) [cid:1] Started pulse_network_monitor
+16:36:16.980673 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:941:pulse_init:(NULL) Init Pulse@0x5a78f95c1f70
+16:36:16.980678 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:189:pulse_new_external_rest:(NULL) [cid:1] New Pulse@0x5a78f95c1f70 with external REST handling
+16:36:16.980687 188818 0x5a78f98dc310 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(27) Set app transport (cb=(nil))
+16:36:16.980693 188818 0x5a78f98dc310 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(27) Set app transport (cb=0x785be0307810)
+16:36:16.980708 188818 0x5a78f98dc310 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x5a78f9b04010 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:16.980725 188818 0x5a78f98dc310 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, app-transport=(structure)"app-transport\,\ enabled\=\(boolean\)true\;";
+16:36:16.980832 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:1873:gst_app_src_set_caps:<appsrc3> setting caps to application/x-dtls
+16:36:16.980847 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc3> caps: (NULL)
+16:36:16.980863 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc3> starting
+16:36:16.981099 188818 0x785b88001a70 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc3> unlock stop
+16:36:16.981117 188818 0x785b88001a70 DEBUG               appsrc gstappsrc.c:1621:gst_app_src_create:<appsrc3> pop caps application/x-dtls
+16:36:16.981194 188818 0x5a78f98dc310 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc3> caps: application/x-dtls
+16:36:16.981220 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:399:pulse_options_set_conference_state_callback:(NULL) [cid:1]
+16:36:16.981226 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1291:pulse_options_set_application_user_agent_string:(NULL) [cid:1] user_agent_string: doppler-sip/0.1
+16:36:16.981232 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1035:_set_self_view_window_handle:(NULL) Set self-view video window handle to: (nil)
+16:36:16.981642 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:127:pmx_device_session_add_video_output:<PmxDeviceSession@0x5a78f99e4190> SessionID(9) Add video OuputID(3)
+16:36:16.981651 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:696:pmx_device_session_set_output_sync:<PmxDeviceSession@0x5a78f99e4190> SessionID(9) Setting output sync: 0
+16:36:16.981659 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:459:pmx_device_session_set_window_handle:<PmxDeviceSession@0x5a78f99e4190> SessionID(9) Setting window handle (0 to output OutputID(3)
+16:36:16.982314 188818 0x5a78f9b03160 DEBUG pulse_network_monitor pulse_network_monitor.c:285:_pulse_network_monitor_update_state:(NULL) Network state: Network available:true connectivity:FULL metered:false dns:up routing:up Local IPv4 {address:10.47.104.51 is_link_local:false is_site_local:true} Local IPv6 {unconfigured}
+16:36:16.982340 188818 0x5a78f9b03160 DEBUG      pulse_callbacks pulse_callbacks.c:1087:pulse_callback_network_status:(NULL) [cid:1 sid:-1] Skipping network status, no callback function registered.
+16:36:16.996558 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1063:_set_remote_video_window_handle:(NULL) Set remote video window handle to: (nil)
+16:36:16.996709 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:127:pmx_device_session_add_video_output:<PmxDeviceSession@0x5a78f9a0e720> SessionID(3) Add video OuputID(4)
+16:36:16.996716 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:459:pmx_device_session_set_window_handle:<PmxDeviceSession@0x5a78f9a0e720> SessionID(3) Setting window handle (0 to output OutputID(4)
+16:36:16.997151 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1091:_set_presentation_video_window_handle:(NULL) Set presentation video window handle to: (nil)
+16:36:16.997266 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:127:pmx_device_session_add_video_output:<PmxDeviceSession@0x5a78f9a027b0> SessionID(6) Add video OuputID(5)
+16:36:16.997272 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:459:pmx_device_session_set_window_handle:<PmxDeviceSession@0x5a78f9a027b0> SessionID(6) Setting window handle (0 to output OutputID(5)
+16:36:16.997572 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:106:pulse_device_session_connect_system_default:(NULL) [cid:1] media_content: 0, media_type: 1, media_direction: 0
+16:36:16.997581 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:129:pulse_device_session_connect_system_default:(NULL) Connecting video-system-default INPUT for MAIN
+16:36:16.997586 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: paused
+16:36:16.997597 188818 0x5a78f98dc310 INFO     pmx_device_debug pmxdevicectx.c:518:pmx_device_ctx_new:<PmxDeviceCtx@0x5a78f9b4dae0> New PmxDeviceCtx (0x5a78f9b4dae0)
+16:36:16.997648 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device0> 0x785ba0011d00 Integrated Camera: Integrated C (class:Video/Source)
+16:36:16.997663 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device1> 0x785ba0007140 Integrated Camera: Integrated I (class:Video/Source)
+16:36:16.997674 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device2> 0x785ba002fbc0 Logitech BRIO (class:Video/Source)
+16:36:16.997684 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device3> 0x785ba00391c0 Logitech BRIO (class:Video/Source)
+16:36:16.997693 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device4> 0x785ba00302b0 Huddly GO: Huddly GO (class:Video/Source)
+16:36:16.997706 188818 0x5a78f98dc310 INFO     pmx_device_debug pmxdevicectx.c:160:pmx_device_ctx_enum_devices:<PmxDeviceCtx@0x5a78f9b4dae0> Found 3 Video/Source devices
+16:36:16.997716 188818 0x5a78f98dc310 INFO     pmx_device_debug pmxdevicectx.c:170:pmx_device_ctx_enum_devices:<PmxDeviceCtx@0x5a78f9b4dae0> Device 0x785ba00302b0, id:3346963126, name:Huddly GO: Huddly GO, is-default:0
+16:36:16.997722 188818 0x5a78f98dc310 INFO     pmx_device_debug pmxdevicectx.c:170:pmx_device_ctx_enum_devices:<PmxDeviceCtx@0x5a78f9b4dae0> Device 0x785ba002fbc0, id:3346963125, name:Logitech BRIO, is-default:0
+16:36:16.997729 188818 0x5a78f98dc310 INFO     pmx_device_debug pmxdevicectx.c:170:pmx_device_ctx_enum_devices:<PmxDeviceCtx@0x5a78f9b4dae0> Device 0x785ba0011d00, id:2823020504, name:Integrated Camera: Integrated C, is-default:0
+16:36:16.997735 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:316:pmx_device_session_enum_input_devices:<PmxDeviceSession@0x5a78f9a0e660> SessionID(2) Enumerate input devices MediaType(video) NumDevices(3) Devices(0x5a78f9b3adc0)
+16:36:16.997746 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:231:pulse_device_session_connect_device:(NULL) [cid:1] device:0x5a78f9b4dbc0, media_content: 0
+16:36:16.997751 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: paused
+16:36:16.997756 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:251:pulse_device_session_connect_device:(NULL) Connecting video INPUT device Huddly GO: Huddly GO for MAIN
+16:36:16.997761 188818 0x5a78f98dc310 INFO      pulse_deviceman pulse_deviceman.c:147:pulse_device_man_acquire_device:(NULL) Acquiring device-id: 3346963126
+16:36:16.997766 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:290:pmx_participant_create_device_session:(NULL) ParticipantID(0) Create video SessionID(28)
+16:36:16.997771 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:814:pmx_device_session_new:<PmxDeviceSession@0x5a78f9b4f060> New SessionID(28) ParticipantID(0)
+16:36:16.997780 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:533:pmx_device_session_set_device_error_callback:<PmxDeviceSession@0x5a78f9b4f060> SessionID(28) Setting Device Error Callback (0x785be03911e0) with user data (0x5a78f9a01050)
+16:36:16.997786 188818 0x5a78f98dc310 INFO     pmx_device_debug pmxdevicectx.c:518:pmx_device_ctx_new:<PmxDeviceCtx@0x5a78f9b4e100> New PmxDeviceCtx (0x5a78f9b4e100)
+16:36:16.999178 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:372:pmx_device_session_set_input_device:<PmxDeviceSession@0x5a78f9b4f060> SessionID(28) Set input device InputID(6) DeviceID(3346963126)
+16:36:16.999219 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device0> 0x785ba0011d00 Integrated Camera: Integrated C (class:Video/Source)
+16:36:16.999232 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device1> 0x785ba0007140 Integrated Camera: Integrated I (class:Video/Source)
+16:36:16.999241 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device2> 0x785ba002fbc0 Logitech BRIO (class:Video/Source)
+16:36:16.999251 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device3> 0x785ba00391c0 Logitech BRIO (class:Video/Source)
+16:36:16.999260 188818 0x5a78f98dc310 INFO pmx_device_monitor_debug pmxdevicemonitor.c:166:pmx_device_monitor_enum_gst_devices:(NULL) Found <v4l2device4> 0x785ba00302b0 Huddly GO: Huddly GO (class:Video/Source)
+16:36:16.999521 188818 0x5a78f98dc310 INFO  pmx_bucketman_debug pmxbucketman.c:520:pmx_bucket_man_add_from_caps:(NULL) caps: video/x-raw(memory:DMABuf), format=(string)DMA_DRM, drm-format=(string)YUYV, width=(int)1280, height=(int)720, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1; image/jpeg, parsed=(boolean)true, width=(int)1280, height=(int)720, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1; video/x-raw, format=(string)YUY2, width=(int)1280, height=(int)720, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1
+16:36:16.999554 188818 0x5a78f98dc310 INFO      pulse_deviceman pulse_deviceman.c:196:pulse_device_man_acquire_device:(NULL) Acquired device-id: 3346963126, err: Success, input_id: 6
+16:36:16.999560 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1421:_set_background_blur_unlocked:(NULL) Disabling Blur on input 6.
+16:36:16.999569 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1429:_set_video_scrambling_unlocked:(NULL) Disabling Scrambling on input 6.
+16:36:16.999575 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1440:_set_change_finder_unlocked:(NULL) Disabling Changefinder on input 6.
+16:36:16.999581 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:1359:pmx_root_enable_changefinder:<PmxRoot@0x5a78f95c96b0> Enable(FALSE) ChangerFinder on InputID(6)
+16:36:16.999683 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1457:_set_facedetection_unlocked:(NULL) Disabling Facedetection on input 6.
+16:36:16.999689 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:1380:pmx_root_enable_facedetection:<PmxRoot@0x5a78f95c96b0> Enable(FALSE) FaceDetection on InputID(6)
+16:36:16.999695 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:2739:pulse_add_local_input_unlocked:(NULL) [cid:1] Adding input: 6 for media_content: MAIN, media_type: VIDEO, loopback: 0 and session_type: DEVICE
+16:36:16.999705 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:616:pmx_device_session_set_state:<PmxDeviceSession@0x5a78f9b4f060> SessionID(28) Set state(started) StateChangeResult(0x7ffde88e0420)
+16:36:16.999948 188818 0x5a78f99cac40 INFO  pmx_bucketman_debug pmxbucketman.c:520:pmx_bucket_man_add_from_caps:(NULL) caps: video/x-raw(memory:DMABuf), format=(string)DMA_DRM, drm-format=(string)YUYV, width=(int)1280, height=(int)720, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1; image/jpeg, parsed=(boolean)true, width=(int)1280, height=(int)720, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1; video/x-raw, format=(string)YUY2, width=(int)1280, height=(int)720, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1
+16:36:16.999978 188818 0x5a78f99cac40 INFO  pmx_bucketman_debug pmxbucketman.c:278:pmx_bucket_man_get_current_bucket:(NULL) Getting bucket: 1280x720,30/1fps,1161216bps, with caps: image/jpeg, parsed=(boolean)true, width=(int)1280, height=(int)720, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1
+16:36:16.999990 188818 0x5a78f99cac40 INFO pmx_device_session_debug pmxdeviceinput.c:261:_set_video_bucket_for_bitrate:(NULL) Settings camera caps to : image/jpeg, parsed=(boolean)true, width=(int)1280, height=(int)720, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1
+16:36:17.000081 188818 0x5a78f99cac40 INFO pmx_device_session_debug pmxdeviceinput.c:194:_reconfigure_convert:(NULL) Got original caps: image/jpeg, parsed=(boolean)true, width=(int)1280, height=(int)720, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1
+16:36:17.001309 188818 0x785b880021c0 WARNING                 v4l2 gstv4l2object.c:5030:gst_v4l2_object_set_crop:<videosrc_6:src> VIDIOC_S_CROP failed
+16:36:17.002140 188818 0x785b880021c0 WARNING                 v4l2 gstv4l2object.c:3511:gst_v4l2_object_reset_compose_region:<videosrc_6:src> Failed to get default compose rectangle with VIDIOC_G_SELECTION: Invalid argument
+16:36:17.002575 188818 0x785b880021c0 WARNING       v4l2bufferpool gstv4l2bufferpool.c:882:gst_v4l2_buffer_pool_start:<videosrc_6:pool0:src> Uncertain or not enough buffers, enabling copy threshold
+16:36:17.020601 188818 0x785b880021c0 WARNING       v4l2bufferpool gstv4l2bufferpool.c:1383:gst_v4l2_buffer_pool_dqbuf:<videosrc_6:pool0:src> Driver should never set v4l2_buffer.field to ANY
+16:36:17.020632 188818 0x785b880021c0 WARNING              v4l2src gstv4l2src.c:1392:gst_v4l2src_create:<videosrc_6> Timestamp does not correlate with any clock, ignoring driver timestamps
+16:36:17.020883 188818 0x5a78f98dc310 INFO                pulse pulse.c:3497:pulse_media_input_set_rotation:(NULL) [cid:1] rotation: 0 for MAIN
+16:36:17.020900 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: active
+16:36:17.020908 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: active
+16:36:17.020913 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:106:pulse_device_session_connect_system_default:(NULL) [cid:1] media_content: 0, media_type: 0, media_direction: 0
+16:36:17.020918 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:129:pulse_device_session_connect_system_default:(NULL) Connecting audio-system-default INPUT for MAIN
+16:36:17.020922 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: paused
+16:36:17.020926 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:231:pulse_device_session_connect_device:(NULL) [cid:1] device:0x7ffde88e0510, media_content: 0
+16:36:17.020930 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: paused
+16:36:17.024708 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:197:pmx_device_session_add_audio_input:<PmxDeviceSession@0x5a78f9a0e010> SessionID(1) Add audio InputID(7)
+16:36:17.024722 188818 0x5a78f98dc310 DEBUG pulse_device_session pulse_device_session.c:294:pulse_device_session_connect_audio_device:(NULL) Adding audio input: 7
+16:36:17.025686 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:93:pulse_device_session_mute_main_audio_unlocked:(NULL) Unmuting MAIN audio
+16:36:17.025697 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:1338:pmx_root_set_mute_on_input:<PmxRoot@0x5a78f95c96b0> Set Mute=FALSE InputID(7)
+16:36:17.025706 188818 0x5a78f98dc310 INFO                pulse pulse.c:2822:pulse_add_local_audio_mixing_input_unlocked:(NULL) [cid:1] adding 7 (DEVICE) input to the mix 0
+16:36:17.025712 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:1126:pmx_root_add_to_mixing_groups:<PmxRoot@0x5a78f95c96b0> Add to mixing groups InputID(7), num MixingGroups(1)
+16:36:17.025825 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1348:_set_automatic_gain_control_unlocked:(NULL) Enabling AGC on input 7.
+16:36:17.025997 188818 0x5a78f98dc310 INFO        pulse_options pulse_options.c:1355:_set_denoise_unlocked:(NULL) Disabling Denoise on input 7.
+16:36:17.026004 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:2739:pulse_add_local_input_unlocked:(NULL) [cid:1] Adding input: 7 for media_content: MAIN, media_type: AUDIO, loopback: 0 and session_type: MIXING_GROUP
+16:36:17.026011 188818 0x5a78f98dc310 DEBUG pulse_device_session pulse_device_session.c:344:pulse_device_session_connect_audio_device:(NULL) Setting PMX_STATE_START on audio device session
+16:36:17.026016 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:616:pmx_device_session_set_state:<PmxDeviceSession@0x5a78f9a0e010> SessionID(1) Set state(started) StateChangeResult(0x7ffde88e0480)
+16:36:17.026183 188818 0x5a78f98dc310 DEBUG pulse_device_session pulse_device_session.c:353:pulse_device_session_connect_audio_device:(NULL) Device change complete with code: 0 and error: 0
+16:36:17.026189 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: active
+16:36:17.026193 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: active
+16:36:17.026198 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:106:pulse_device_session_connect_system_default:(NULL) [cid:1] media_content: 0, media_type: 0, media_direction: 1
+16:36:17.026202 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:129:pulse_device_session_connect_system_default:(NULL) Connecting audio-system-default OUTPUT for MAIN
+16:36:17.026206 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: paused
+16:36:17.026212 188818 0x5a78f98dc310 INFO pulse_device_session pulse_device_session.c:231:pulse_device_session_connect_device:(NULL) [cid:1] device:0x7ffde88e0510, media_content: 0
+16:36:17.026216 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: paused
+16:36:17.026370 188818 0x785b88002430 WARNING             GST_PADS gstpad.c:4428:gst_pad_peer_query:<pexaudioenginesrc0:src> could not send sticky events
+16:36:17.027204 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:209:pmx_device_session_add_audio_output:<PmxDeviceSession@0x5a78f9a0e010> SessionID(1) Add audio OuputID(8)
+16:36:17.027216 188818 0x5a78f98dc310 DEBUG pulse_device_session pulse_device_session.c:322:pulse_device_session_connect_audio_device:(NULL) Adding audio output: 8
+16:36:17.027408 188818 0x785b88002430 WARNING             GST_PADS gstpad.c:4428:gst_pad_peer_query:<pexaudioenginesrc0:src> could not send sticky events
+16:36:17.027581 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:17.027711 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.028244 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.028387 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:2880:pulse_add_local_output_unlocked:(NULL) Adding output (8) for MAIN AUDIO (DEVICE)
+16:36:17.028403 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:2936:pulse_add_local_output_unlocked:(NULL) [cid:1] Connecting receive media_content: MAIN to output: 8 with codec: (null)
+16:36:17.028412 188818 0x5a78f98dc310 DEBUG pulse_device_session pulse_device_session.c:344:pulse_device_session_connect_audio_device:(NULL) Setting PMX_STATE_START on audio device session
+16:36:17.028418 188818 0x5a78f98dc310 INFO pmx_device_session_debug pmxdevicesession.c:616:pmx_device_session_set_state:<PmxDeviceSession@0x5a78f9a0e010> SessionID(1) Set state(started) StateChangeResult(0x7ffde88e0480)
+16:36:17.028457 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:17.028516 188818 0x5a78f98dc310 DEBUG pulse_device_session pulse_device_session.c:353:pulse_device_session_connect_audio_device:(NULL) Device change complete with code: 0 and error: 0
+16:36:17.028522 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: active
+16:36:17.028526 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:4665:pulse_set_rtp_activity_monitor_paused:(NULL) [cid:1] Setting rtp activity monitor: active
+16:36:17.028536 188818 0x5a78f98dc310 INFO   pulse_data_session pulse_data_session.c:652:pulse_data_session_connect_output:(NULL) [cid:1] config: 0x5a78f9d2ca20, media_content: 0
+16:36:17.028543 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:368:pmx_participant_create_data_session:(NULL) ParticipantID(0) Create DataSession ID(29)
+16:36:17.028549 188818 0x5a78f98dc310 INFO pmx_data_session_debug pmxdatasession.c:128:pmx_data_session_new:<PmxDataSession@0x5a78f9d2c9b0> New DataSession ID(29) ParticipantID(0)
+16:36:17.028568 188818 0x5a78f98dc310 INFO pmx_data_session_debug pmxdatasession.c:51:pmx_data_session_add_output:<PmxDataSession@0x5a78f9d2c9b0> DataSessionID(29) Add output OutputID(9) Caps(video/x-raw, format=(string)RGBA)
+16:36:17.028568 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.029053 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:326:pmx_root_configure_data_output:<PmxRoot@0x5a78f95c96b0> Configure Data OutputID(9)
+16:36:17.029068 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:2880:pulse_add_local_output_unlocked:(NULL) Adding output (9) for MAIN VIDEO (DATA)
+16:36:17.029074 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:2936:pulse_add_local_output_unlocked:(NULL) [cid:1] Connecting receive media_content: MAIN to output: 9 with codec: (null)
+16:36:17.029079 188818 0x5a78f98dc310 DEBUG   pulse_data_session pulse_data_session.c:757:pulse_data_session_connect_output:(NULL) Adding data-session video output: 9 with caps: 'video/x-raw, format=RGBA'
+16:36:17.029085 188818 0x5a78f98dc310 INFO   pulse_data_session pulse_data_session.c:652:pulse_data_session_connect_output:(NULL) [cid:1] config: 0x5a78f9d2ca20, media_content: 2
+16:36:17.029090 188818 0x5a78f98dc310 INFO pmx_participant_debug pmxparticipant.c:368:pmx_participant_create_data_session:(NULL) ParticipantID(0) Create DataSession ID(30)
+16:36:17.029095 188818 0x5a78f98dc310 INFO pmx_data_session_debug pmxdatasession.c:128:pmx_data_session_new:<PmxDataSession@0x5a78f9d3d860> New DataSession ID(30) ParticipantID(0)
+16:36:17.029105 188818 0x5a78f98dc310 INFO pmx_data_session_debug pmxdatasession.c:51:pmx_data_session_add_output:<PmxDataSession@0x5a78f9d3d860> DataSessionID(30) Add output OutputID(10) Caps(video/x-raw, format=(string)RGBA)
+16:36:17.029181 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:17.029512 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:326:pmx_root_configure_data_output:<PmxRoot@0x5a78f95c96b0> Configure Data OutputID(10)
+16:36:17.029525 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:2880:pulse_add_local_output_unlocked:(NULL) Adding output (10) for SELFVIEW VIDEO (DATA)
+16:36:17.029531 188818 0x5a78f98dc310 DEBUG                pulse pulse.c:2921:pulse_add_local_output_unlocked:(NULL) [cid:1] Connecting SELFVIEW input: 6 to output: 10 with codec: (null)
+16:36:17.029538 188818 0x5a78f98dc310 INFO            pmx_debug pmx.c:515:pmx_root_video_connect:<PmxRoot@0x5a78f95c96b0> Video-connect InputID(6) -> OutputID(10), CodecID(18), ConnectionPoint(enum-val=2)
+16:36:17.029546 188818 0x5a78f98dc310 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x5a78f9d3da70:10) Codec((null)) Encoder((null)), clock-rate(0), pt(255), SSRC(0x00000000)
+16:36:17.029637 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:17.029780 188818 0x5a78f98dc310 DEBUG   pulse_data_session pulse_data_session.c:757:pulse_data_session_connect_output:(NULL) Adding data-session video output: 10 with caps: 'video/x-raw, format=RGBA'
+16:36:17.029789 188818 0x5a78f98dc310 INFO                pulse pulse.c:1737:pulse_setup_stage_1_from_structure:(NULL) [cid:1]
+16:36:17.029802 188818 0x5a78f98dc310 DEBUG pulse_rest_conference_event_subscriber pulse_rest_conference_event_subscriber.c:113:pulse_rest_conference_event_subscriber_init:(NULL) [cid:1 sid:1] Initializing...
+16:36:17.029987 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:194:pulse_net_get_interface_addresses:(NULL) skipping loopback interface: lo
+16:36:17.029994 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:209:pulse_net_get_interface_addresses:(NULL) skipping address with unhandled family AF_PACKET (17) for interface enx083a8856fb29
+16:36:17.029998 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:202:pulse_net_get_interface_addresses:(NULL) skipping interface thats not running: wlp0s20f3
+16:36:17.030002 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:202:pulse_net_get_interface_addresses:(NULL) skipping interface thats not running: virbr0
+16:36:17.030006 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:202:pulse_net_get_interface_addresses:(NULL) skipping interface thats not running: virbr1
+16:36:17.030010 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:202:pulse_net_get_interface_addresses:(NULL) skipping interface thats not running: br-3c6472e1237b
+16:36:17.030015 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:209:pulse_net_get_interface_addresses:(NULL) skipping address with unhandled family AF_PACKET (17) for interface docker0
+16:36:17.030020 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:209:pulse_net_get_interface_addresses:(NULL) skipping address with unhandled family AF_PACKET (17) for interface vethc41a1c0
+16:36:17.030024 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:209:pulse_net_get_interface_addresses:(NULL) skipping address with unhandled family AF_PACKET (17) for interface vethcf93531
+16:36:17.030029 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:209:pulse_net_get_interface_addresses:(NULL) skipping address with unhandled family AF_PACKET (17) for interface veth6b5a151
+16:36:17.030035 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:246:pulse_net_get_interface_addresses:(NULL) Valid address: 10.47.104.51
+16:36:17.030039 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:202:pulse_net_get_interface_addresses:(NULL) skipping interface thats not running: vpn00b175c1f8
+16:36:17.030043 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:202:pulse_net_get_interface_addresses:(NULL) skipping interface thats not running: vpn0059f7e7b9
+16:36:17.030048 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:202:pulse_net_get_interface_addresses:(NULL) skipping interface thats not running: vpn005d86a14c
+16:36:17.030052 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:202:pulse_net_get_interface_addresses:(NULL) skipping interface thats not running: vpn003e9c19ec
+16:36:17.030056 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:246:pulse_net_get_interface_addresses:(NULL) Valid address: 172.17.1.1
+16:36:17.030060 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:217:pulse_net_get_interface_addresses:(NULL) skipping AF_INET6 address on interface enx083a8856fb29 (not in accepted AF mask)
+16:36:17.030065 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:217:pulse_net_get_interface_addresses:(NULL) skipping AF_INET6 address on interface docker0 (not in accepted AF mask)
+16:36:17.030069 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:217:pulse_net_get_interface_addresses:(NULL) skipping AF_INET6 address on interface docker0 (not in accepted AF mask)
+16:36:17.030072 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:217:pulse_net_get_interface_addresses:(NULL) skipping AF_INET6 address on interface vethc41a1c0 (not in accepted AF mask)
+16:36:17.030076 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:217:pulse_net_get_interface_addresses:(NULL) skipping AF_INET6 address on interface vethcf93531 (not in accepted AF mask)
+16:36:17.030080 188818 0x5a78f98dc310 DEBUG            pulse_net pulse_net.c:217:pulse_net_get_interface_addresses:(NULL) skipping AF_INET6 address on interface veth6b5a151 (not in accepted AF mask)
+16:36:17.030205 188818 0x5a78f98dc310 ERROR              default pmxdtls.c:552:pmx_dtls_set_mode:(NULL) Missing dtls handle!
+16:36:17.030254 188818 0x5a78f98dc310 DEBUG     pulse_connection pulse_connection.c:190:_pulse_connection_setup_stage1_internal:(NULL) [cid:1 sid:1] Request (local) SDP: v=0
+o=pexip_pulse_1.0 1779374177030096 1 IN IP4 10.47.104.51
+s=-
+t=0 0
+a=extmap-allow-mixed
+a=msid-semantic: WMS 895168e8-1f67-dded-e1b6-648bfdb7609d
+m=audio 10000 UDP/TLS/RTP/SAVPF 109 0 8 101
+c=IN IP4 10.47.104.51
+b=AS:2048
+b=TIAS:2048000
+a=sendrecv
+a=mid:0
+a=msid:895168e8-1f67-dded-e1b6-648bfdb7609d 875b841f-fc7c-5dfb-5f40-1b58be546afe
+a=connection:new
+a=rtpmap:109 OPUS/48000/2
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:101 TELEPHONE-EVENT/8000
+a=fmtp:109 maxplaybackrate=48000;stereo=1;useinbandfec=1
+a=fmtp:101 0-15
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:ffehTikGQpMO19KcYXW11JxfStd4PobeHtLwY2i+|2^48
+a=content:main
+a=extmap:1 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01
+a=extmap:2 urn:ietf:params:rtp-hdrext:ssrc-audio-level
+a=rtcp:10001 IN IP4 10.47.104.51
+a=rtcp-fb:* transport-cc
+a=ssrc:582040819 cname:33441d99-542c-4586-a4b5-52f2b1b849a7
+a=setup:active
+m=video 10002 UDP/TLS/RTP/SAVPF 96 120
+c=IN IP4 10.47.104.51
+b=AS:2048
+b=TIAS:2048000
+a=sendrecv
+a=mid:1
+a=msid:895168e8-1f67-dded-e1b6-648bfdb7609d e0e6fadb-28ed-4c84-a002-e7f41e3ff15e
+a=connection:new
+a=rtpmap:96 H264/90000
+a=rtpmap:120 RTX/90000
+a=fmtp:96 profile-level-id=428014;max-br=3732;max-mbps=245760;max-fs=8192;max-smbps=245760;max-fps=3000
+a=fmtp:120 apt=96
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:SzXwKHFauKKEofuhlMVJ/FfqcSbJeMGUtRy+O9Fm|2^48
+a=content:main
+a=extmap:1 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01
+a=rtcp:10003 IN IP4 10.47.104.51
+a=rtcp-fb:* nack
+a=rtcp-fb:* nack pli
+a=rtcp-fb:* transport-cc
+a=rtcp-fb:* goog-remb
+a=ssrc:1656170833 cname:02053a1e-26fb-42bc-bc39-aad9639b483a
+a=ssrc:712493731 cname:02053a1e-26fb-42bc-bc39-aad9639b483a
+a=ssrc-group:FID 1656170833 712493731
+a=setup:active
+m=video 10004 UDP/TLS/RTP/SAVPF 96 122
+c=IN IP4 10.47.104.51
+b=AS:2048
+b=TIAS:2048000
+a=inactive
+a=mid:2
+a=connection:new
+a=rtpmap:96 H264/90000
+a=rtpmap:122 RTX/90000
+a=fmtp:96 profile-level-id=428014;max-br=3732;max-mbps=245760;max-fs=8192;max-smbps=245760;max-fps=3000
+a=fmtp:122 apt=96
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:lGuhSGWTCinWiMxfXmSOvhn3JsEiGDxHU/k/BBw1|2^48
+a=content:slides
+a=extmap:1 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01
+a=rtcp:10005 IN IP4 10.47.104.51
+a=rtcp-fb:* nack
+a=rtcp-fb:* nack pli
+a=rtcp-fb:* transport-cc
+a=rtcp-fb:* goog-remb
+a=ssrc:3093001258 cname:64143971-c82c-4146-9e3b-beee4ad41846
+a=ssrc:1874014217 cname:64143971-c82c-4146-9e3b-beee4ad41846
+a=ssrc-group:FID 3093001258 1874014217
+a=setup:active
+
+16:36:17.030      dlg0x5a78f9d531d8  UAC dialog created
+===== SIP: outgoing offer SDP (2609 bytes) =====
+v=0
+o=pexip_pulse_1.0 1779374177030096 1 IN IP4 10.47.104.51
+s=-
+t=0 0
+a=extmap-allow-mixed
+a=msid-semantic: WMS 895168e8-1f67-dded-e1b6-648bfdb7609d
+m=audio 10000 UDP/TLS/RTP/SAVPF 109 0 8 101
+c=IN IP4 10.47.104.51
+b=AS:2048
+b=TIAS:2048000
+a=sendrecv
+a=mid:0
+a=msid:895168e8-1f67-dded-e1b6-648bfdb7609d 875b841f-fc7c-5dfb-5f40-1b58be546afe
+a=connection:new
+a=rtpmap:109 OPUS/48000/2
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:101 TELEPHONE-EVENT/8000
+a=fmtp:109 maxplaybackrate=48000;stereo=1;useinbandfec=1
+a=fmtp:101 0-15
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:ffehTikGQpMO19KcYXW11JxfStd4PobeHtLwY2i+|2^48
+a=content:main
+a=extmap:1 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01
+a=extmap:2 urn:ietf:params:rtp-hdrext:ssrc-audio-level
+a=rtcp:10001 IN IP4 10.47.104.51
+a=rtcp-fb:* transport-cc
+a=ssrc:582040819 cname:33441d99-542c-4586-a4b5-52f2b1b849a7
+a=setup:active
+m=video 10002 UDP/TLS/RTP/SAVPF 96 120
+c=IN IP4 10.47.104.51
+b=AS:2048
+b=TIAS:2048000
+a=sendrecv
+a=mid:1
+a=msid:895168e8-1f67-dded-e1b6-648bfdb7609d e0e6fadb-28ed-4c84-a002-e7f41e3ff15e
+a=connection:new
+a=rtpmap:96 H264/90000
+a=rtpmap:120 RTX/90000
+a=fmtp:96 profile-level-id=428014;max-br=3732;max-mbps=245760;max-fs=8192;max-smbps=245760;max-fps=3000
+a=fmtp:120 apt=96
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:SzXwKHFauKKEofuhlMVJ/FfqcSbJeMGUtRy+O9Fm|2^48
+a=content:main
+a=extmap:1 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01
+a=rtcp:10003 IN IP4 10.47.104.51
+a=rtcp-fb:* nack
+a=rtcp-fb:* nack pli
+a=rtcp-fb:* transport-cc
+a=rtcp-fb:* goog-remb
+a=ssrc:1656170833 cname:02053a1e-26fb-42bc-bc39-aad9639b483a
+a=ssrc:712493731 cname:02053a1e-26fb-42bc-bc39-aad9639b483a
+a=ssrc-group:FID 1656170833 712493731
+a=setup:active
+m=video 10004 UDP/TLS/RTP/SAVPF 96 122
+c=IN IP4 10.47.104.51
+b=AS:2048
+b=TIAS:2048000
+a=inactive
+a=mid:2
+a=connection:new
+a=rtpmap:96 H264/90000
+a=rtpmap:122 RTX/90000
+a=fmtp:96 profile-level-id=428014;max-br=3732;max-mbps=245760;max-fs=8192;max-smbps=245760;max-fps=3000
+a=fmtp:122 apt=96
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:lGuhSGWTCinWiMxfXmSOvhn3JsEiGDxHU/k/BBw1|2^48
+a=content:slides
+a=extmap:1 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01
+a=rtcp:10005 IN IP4 10.47.104.51
+a=rtcp-fb:* nack
+a=rtcp-fb:* nack pli
+a=rtcp-fb:* transport-cc
+a=rtcp-fb:* goog-remb
+a=ssrc:3093001258 cname:64143971-c82c-4146-9e3b-beee4ad41846
+a=ssrc:1874014217 cname:64143971-c82c-4146-9e3b-beee4ad41846
+a=ssrc-group:FID 3093001258 1874014217
+a=setup:active
+===== end SDP =====
+16:36:17.030      dlg0x5a78f9d531d8  Module mod-invite added as dialog usage, data=0x5a78f9d57088
+16:36:17.030      dlg0x5a78f9d531d8  .Session count inc to 2 by mod-invite
+16:36:17.030      dlg0x5a78f9d531d8  Module mod-100rel added as dialog usage, data=0x5a78f9d5c338
+16:36:17.030      dlg0x5a78f9d531d8  100rel module attached
+16:36:17.030      inv0x5a78f9d531d8  UAC invite session created for dialog dlg0x5a78f9d531d8
+16:36:17.030             sip_util.c  Request msg INVITE/cseq=15928 (tdta0x5a78f9d5c718) created.
+16:36:17.030      inv0x5a78f9d531d8  .Sending Request msg INVITE/cseq=15928 (tdta0x5a78f9d5c718)
+16:36:17.030      dlg0x5a78f9d531d8  ..Sending Request msg INVITE/cseq=15928 (tdta0x5a78f9d5c718)
+16:36:17.030      tsx0x5a78f9d541e8  ...Transaction created for Request msg INVITE/cseq=15928 (tdta0x5a78f9d5c718)
+16:36:17.030      tsx0x5a78f9d541e8  ..Sending Request msg INVITE/cseq=15928 (tdta0x5a78f9d5c718) in state Null
+16:36:17.030          sip_resolve.c  ...Starting async DNS SRV query: target=_sip._tcp.nightly.pexip.com, transport=TCP, port=0
+16:36:17.030 _sip._tcp.nightly.pexi  ...Starting async DNS SRV query_job: target=_sip._tcp.nightly.pexip.com:5060
+16:36:17.030             resolver.c  ...Nameserver 127.0.0.53:53 state changed Active --> Probing
+16:36:17.030             resolver.c  ...Transmitting 45 bytes to NS 0 (127.0.0.53:53): DNS SRV query for _sip._tcp.nightly.pexip.com: Success
+16:36:17.030      tsx0x5a78f9d541e8  ...State changed from Null to Calling, event=TX_MSG
+16:36:17.030      dlg0x5a78f9d531d8  ....Transaction tsx0x5a78f9d541e8 state changed to Calling
+16:36:17.030      inv0x5a78f9d531d8  .....State changed from NULL to CALLING, event=TSX_STATE
+16:36:17.030             resolver.c !Received 116 bytes DNS response from 127.0.0.53:53
+16:36:17.030             resolver.c  Nameserver 127.0.0.53:53 state changed Probing --> Active
+16:36:17.030 _sip._tcp.nightly.pexi  SRV query_job for _sip._tcp.nightly.pexip.com completed, 1 of 1 total entries selected:
+16:36:17.030 _sip._tcp.nightly.pexi   0: SRV 0 0 5060 no-proxy.nightly.pexip.com (10.47.34.16)
+16:36:17.030 _sip._tcp.nightly.pexi  Server resolution complete, 1 server entry(s) found
+16:36:17.030     tcpc0x785b14000fb8  TCP client transport created
+16:36:17.030     tcpc0x785b14000fb8  TCP transport 10.47.104.51:40851 is connecting to 10.47.34.16:5060...
+16:36:17.030916 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.031     tcpc0x785b14000fb8  TCP transport 10.47.104.51:40851 is connected to 10.47.34.16:5060
+16:36:17.037         sip_endpoint.c  Processing incoming message: Response msg 100/INVITE/cseq=15928 (rdata0x785b140012a0)
+16:36:17.037      tsx0x5a78f9d541e8  .Incoming Response msg 100/INVITE/cseq=15928 (rdata0x785b140012a0) in state Calling
+16:36:17.037      tsx0x5a78f9d541e8  ..State changed from Calling to Proceeding, event=RX_MSG
+16:36:17.037      dlg0x5a78f9d531d8  ...Received Response msg 100/INVITE/cseq=15928 (rdata0x785b140012a0)
+16:36:17.037      dlg0x5a78f9d531d8  ...Transaction tsx0x5a78f9d541e8 state changed to Proceeding
+16:36:17.041951 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.042113 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.043411 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.058105 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.058271 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.058382 188818 0x785b90008370 DEBUG                pulse pulsedeviceprovider.c:298:get_server_info_cb:<pulsedeviceprovider0> Default sink name: alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink
+16:36:17.435         sip_endpoint.c  Processing incoming message: Response msg 180/INVITE/cseq=15928 (rdata0x785b140012a0)
+16:36:17.435      tsx0x5a78f9d541e8  .Incoming Response msg 180/INVITE/cseq=15928 (rdata0x785b140012a0) in state Proceeding
+16:36:17.435      tsx0x5a78f9d541e8  ..State changed from Proceeding to Proceeding, event=RX_MSG
+16:36:17.435      dlg0x5a78f9d531d8  ...Received Response msg 180/INVITE/cseq=15928 (rdata0x785b140012a0)
+16:36:17.435      dlg0x5a78f9d531d8  ....Route-set updated
+16:36:17.435      dlg0x5a78f9d531d8  ...Transaction tsx0x5a78f9d541e8 state changed to Proceeding
+16:36:17.435      inv0x5a78f9d531d8  ....State changed from CALLING to EARLY, event=TSX_STATE
+16:36:17.504768 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:17.664         sip_endpoint.c  Processing incoming message: Response msg 200/INVITE/cseq=15928 (rdata0x785b140012a0)
+16:36:17.664      tsx0x5a78f9d541e8  .Incoming Response msg 200/INVITE/cseq=15928 (rdata0x785b140012a0) in state Proceeding
+16:36:17.664      tsx0x5a78f9d541e8  ..State changed from Proceeding to Terminated, event=RX_MSG
+16:36:17.664      dlg0x5a78f9d531d8  ...Received Response msg 200/INVITE/cseq=15928 (rdata0x785b140012a0)
+16:36:17.664      dlg0x5a78f9d531d8  ....Route-set updated
+16:36:17.664      dlg0x5a78f9d531d8  ....Route-set frozen
+16:36:17.664      dlg0x5a78f9d531d8  ...Transaction tsx0x5a78f9d541e8 state changed to Terminated
+16:36:17.664      inv0x5a78f9d531d8  ....State changed from EARLY to CONNECTING, event=TSX_STATE
+16:36:17.664      inv0x5a78f9d531d8  ....Got SDP answer in Response msg 200/INVITE/cseq=15928 (rdata0x785b140012a0)
+16:36:17.665      inv0x5a78f9d531d8  ....SDP negotiation done: Success
+16:36:17.665      inv0x5a78f9d531d8  ....Received Response msg 200/INVITE/cseq=15928 (rdata0x785b140012a0), sending ACK
+16:36:17.665             sip_util.c  ....Request msg ACK/cseq=15928 (tdta0x785b1400d6e8) created.
+16:36:17.665      dlg0x5a78f9d531d8  .....Sending Request msg ACK/cseq=15928 (tdta0x785b1400d6e8)
+16:36:17.665          sip_resolve.c  .....Target '10.47.34.16:5060' type=TCP resolved to '10.47.34.16:5060' type=TCP (TCP transport)
+16:36:17.665      inv0x5a78f9d531d8  ....State changed from CONNECTING to CONFIRMED, event=TX_MSG
+===== SIP: incoming answer SDP (2167 bytes) =====
+v=0
+o=- 1779374177 1779374178 IN IP4 10.47.34.16
+s=-
+c=IN IP4 10.47.34.16
+b=AS:7528
+t=0 0
+m=audio 45540 UDP/TLS/RTP/SAVPF 109 0 8 101
+c=IN IP4 10.47.34.16
+a=rtpmap:109 opus/48000/2
+a=fmtp:109 useinbandfec=1;stereo=0
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-15
+a=rtcp:45541 IN IP4 10.47.34.16
+a=sendrecv
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:u1Ho5sJvM9GW+HYPZ4xXduRzHrvaujRbA9mZooBj|2^48
+a=mid:0
+a=ssrc:1773936377 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:1773936377 msid:UNKNOWN 090a0b99-3c47-41b0-8d59-ee6e335692dd
+m=video 45542 UDP/TLS/RTP/SAVPF 96 120
+c=IN IP4 10.47.34.16
+b=TIAS:3732480
+a=rtpmap:96 H264/90000
+a=fmtp:96 profile-level-id=428014;max-br=3732;max-mbps=245760;max-fs=8192;max-smbps=245760;max-fps=3000
+a=rtpmap:120 rtx/90000
+a=fmtp:120 apt=96
+a=rtcp:45543 IN IP4 10.47.34.16
+a=rtcp-fb:* nack pli
+a=rtcp-fb:* nack
+a=rtcp-fb:* goog-remb
+a=ssrc-group:FID 1150726878 470271232
+a=sendrecv
+a=content:main
+a=label:11
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:xypG99QruEPttoWh5sgVZbX5QGzIRQGVKtIVxL8Z|2^48
+a=mid:1
+a=ssrc:1150726878 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:1150726878 msid:UNKNOWN 3b891fe6-6f94-4dc0-978d-2a8641c542f6
+a=ssrc:470271232 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:470271232 msid:UNKNOWN 3b891fe6-6f94-4dc0-978d-2a8641c542f6
+m=video 45544 UDP/TLS/RTP/SAVPF 96 122
+c=IN IP4 10.47.34.16
+b=TIAS:3732480
+a=rtpmap:96 H264/90000
+a=fmtp:96 profile-level-id=428014;max-br=3732;max-mbps=245760;max-fs=8192;max-smbps=245760;max-fps=3000
+a=rtpmap:122 rtx/90000
+a=fmtp:122 apt=96
+a=rtcp:45545 IN IP4 10.47.34.16
+a=rtcp-fb:* nack pli
+a=rtcp-fb:* nack
+a=rtcp-fb:* goog-remb
+a=ssrc-group:FID 1325812506 2746844439
+a=inactive
+a=content:slides
+a=label:12
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:ySB8wlT9OAUlBrurySkxAafajU7Lw5vTQyQO36+d|2^48
+a=mid:2
+a=ssrc:1325812506 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:1325812506 msid:UNKNOWN 253f3615-ffca-4e81-8208-6ac1ea01dba0
+a=ssrc:2746844439 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:2746844439 msid:UNKNOWN 253f3615-ffca-4e81-8208-6ac1ea01dba0
+===== end SDP =====
+16:36:17.665179 188818 0x785b14012c30 INFO                pulse pulse.c:1842:pulse_setup_stage_2_from_structure:(NULL) [cid:1]
+16:36:17.665218 188818 0x785b14012c30 DEBUG     pulse_connection pulse_connection.c:244:pulse_connection_setup_stage2_from_structure:(NULL) [cid:1 sid:1] Response (remote) SDP: v=0
+o=- 1779374177 1779374178 IN IP4 10.47.34.16
+s=-
+c=IN IP4 10.47.34.16
+b=AS:7528
+t=0 0
+m=audio 45540 UDP/TLS/RTP/SAVPF 109 0 8 101
+c=IN IP4 10.47.34.16
+a=rtpmap:109 opus/48000/2
+a=fmtp:109 useinbandfec=1;stereo=0
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-15
+a=rtcp:45541 IN IP4 10.47.34.16
+a=sendrecv
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:u1Ho5sJvM9GW+HYPZ4xXduRzHrvaujRbA9mZooBj|2^48
+a=mid:0
+a=ssrc:1773936377 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:1773936377 msid:UNKNOWN 090a0b99-3c47-41b0-8d59-ee6e335692dd
+m=video 45542 UDP/TLS/RTP/SAVPF 96 120
+c=IN IP4 10.47.34.16
+b=TIAS:3732480
+a=rtpmap:96 H264/90000
+a=fmtp:96 profile-level-id=428014;max-br=3732;max-mbps=245760;max-fs=8192;max-smbps=245760;max-fps=3000
+a=rtpmap:120 rtx/90000
+a=fmtp:120 apt=96
+a=rtcp:45543 IN IP4 10.47.34.16
+a=rtcp-fb:* nack pli
+a=rtcp-fb:* nack
+a=rtcp-fb:* goog-remb
+a=ssrc-group:FID 1150726878 470271232
+a=sendrecv
+a=content:main
+a=label:11
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:xypG99QruEPttoWh5sgVZbX5QGzIRQGVKtIVxL8Z|2^48
+a=mid:1
+a=ssrc:1150726878 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:1150726878 msid:UNKNOWN 3b891fe6-6f94-4dc0-978d-2a8641c542f6
+a=ssrc:470271232 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:470271232 msid:UNKNOWN 3b891fe6-6f94-4dc0-978d-2a8641c542f6
+m=video 45544 UDP/TLS/RTP/SAVPF 96 122
+c=IN IP4 10.47.34.16
+b=TIAS:3732480
+a=rtpmap:96 H264/90000
+a=fmtp:96 profile-level-id=428014;max-br=3732;max-mbps=245760;max-fs=8192;max-smbps=245760;max-fps=3000
+a=rtpmap:122 rtx/90000
+a=fmtp:122 apt=96
+a=rtcp:45545 IN IP4 10.47.34.16
+a=rtcp-fb:* nack pli
+a=rtcp-fb:* nack
+a=rtcp-fb:* goog-remb
+a=ssrc-group:FID 1325812506 2746844439
+a=inactive
+a=content:slides
+a=label:12
+a=crypto:0 AES_CM_128_HMAC_SHA1_80 inline:ySB8wlT9OAUlBrurySkxAafajU7Lw5vTQyQO36+d|2^48
+a=mid:2
+a=ssrc:1325812506 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:1325812506 msid:UNKNOWN 253f3615-ffca-4e81-8208-6ac1ea01dba0
+a=ssrc:2746844439 cname:5de5d374-94e5-4d4a-bca6-7dc34f52269e
+a=ssrc:2746844439 msid:UNKNOWN 253f3615-ffca-4e81-8208-6ac1ea01dba0
+
+16:36:17.665309 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:927:pmx_util_sdp_get_meta:(NULL) SDP meta parsed: medias_len=3 bundled=0 has_candidates=0 is_trickle_ice=0 has_ice_credentials=0 bundled_candidates=0 bundled_port=0 sections=[[0]={type=audio,content=main,dir=sendrecv,active=1} [1]={type=video,content=main,dir=sendrecv,active=1} [2]={type=video,content=slides,dir=inactive,active=0}]
+16:36:17.665325 188818 0x785b14012c30 INFO     pulse_connection pulse_connection.c:279:_pulse_connection_setup_stage2_internal:(NULL) [cid:1 sid:1] stage2 branch decision: bundled=0 n_sections=3 -> taking NON-BUNDLE multi-section path
+16:36:17.665333 188818 0x785b14012c30 DEBUG     pulse_connection pulse_connection.c:312:_pulse_connection_setup_stage2_internal:(NULL) [cid:1 sid:1] non-bundle answer with 3 m-section(s); provisioning per-section RTP sessions
+16:36:17.665343 188818 0x785b14012c30 INFO pmx_participant_debug pmxparticipant.c:345:pmx_participant_create_rtp_session:(NULL) ParticipantID(0) Create SessionID(31)
+16:36:17.665361 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:320:pmx_session_bw_man_set_participant_max_tx_kbps:(NULL) SessionID(31) Set Participant MaxTxKbps(4096)
+16:36:17.665368 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:299:pmx_session_bw_man_set_max_tx_kbps:(NULL) SessionID(31) Set MaxTxKbps(4096)
+16:36:17.665386 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:1535:pmx_rtp_session_new:<PmxRtpSession@0x785b14016b00> New SessionID(31) ParticipantID(0) BWMan(0x785b14016170) StatsMan(0x5a78f99d7bb0)
+16:36:17.665406 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:260:pex_papa_bin_create_recv_pad:<pexpapabin0> create pad send_sink_0_31
+16:36:17.665707 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc4> caps: (NULL)
+16:36:17.665923 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc4> starting
+16:36:17.665998 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtp_src_31 from rtpbin (0x5a78f9a61c60)
+16:36:17.666009 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtp_sink_31 from rtpbin (0x5a78f9a61c60)
+16:36:17.666041 188818 0x785b88000b70 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc4> unlock stop
+16:36:17.666099 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtcp_src_31 from rtpbin (0x5a78f9a61c60)
+16:36:17.666167 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:recv_rtp_sink_31 from rtpbin (0x5a78f9a61c60)
+16:36:17.666187 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:recv_rtcp_sink_31 from rtpbin (0x5a78f9a61c60)
+16:36:17.666587 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14092080 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.666600 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, rtcp-interval=(guint64)200000000;
+16:36:17.666608 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14092080 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.666614 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, transport-stats-notify-interval=(uint)200;
+16:36:17.666622 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:1137:pmx_rtp_session_set_jb_latency:<PmxRtpSession@0x785b14016b00> SessionID(31) Set JitterBuffer latency(1 ms)
+16:36:17.666651 188818 0x785b14012c30 INFO                pulse pulse.c:803:pulse_create_additional_rtp_session:(NULL) [cid:1 sid:1] provisioned additional rtp_session: slot=1 rtp_session=0x785b14016b00
+16:36:17.666658 188818 0x785b14012c30 INFO pmx_participant_debug pmxparticipant.c:345:pmx_participant_create_rtp_session:(NULL) ParticipantID(0) Create SessionID(32)
+16:36:17.666667 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:320:pmx_session_bw_man_set_participant_max_tx_kbps:(NULL) SessionID(32) Set Participant MaxTxKbps(4096)
+16:36:17.666672 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:299:pmx_session_bw_man_set_max_tx_kbps:(NULL) SessionID(32) Set MaxTxKbps(4096)
+16:36:17.666673 188818 0x5a78f99cac40 INFO pmx_sessionbwman_debug pmxsessionbwman.c:422:_notify_new_bitrate_async:(NULL) About to notify new bitrate: 4096000
+16:36:17.666679 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:1535:pmx_rtp_session_new:<PmxRtpSession@0x785b14093200> New SessionID(32) ParticipantID(0) BWMan(0x785b1408d280) StatsMan(0x5a78f99d7bb0)
+16:36:17.666693 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:260:pex_papa_bin_create_recv_pad:<pexpapabin0> create pad send_sink_0_32
+16:36:17.666849 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc5> caps: (NULL)
+16:36:17.666979 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc5> starting
+16:36:17.667037 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtp_src_32 from rtpbin (0x5a78f9a61c60)
+16:36:17.667048 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtp_sink_32 from rtpbin (0x5a78f9a61c60)
+16:36:17.667123 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtcp_src_32 from rtpbin (0x5a78f9a61c60)
+16:36:17.667171 188818 0x785b88001ce0 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc5> unlock stop
+16:36:17.667190 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:recv_rtp_sink_32 from rtpbin (0x5a78f9a61c60)
+16:36:17.667210 188818 0x785b14012c30 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:recv_rtcp_sink_32 from rtpbin (0x5a78f9a61c60)
+16:36:17.667576 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b1410d700 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.667585 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, rtcp-interval=(guint64)200000000;
+16:36:17.667592 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b1410d700 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.667598 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, transport-stats-notify-interval=(uint)200;
+16:36:17.667607 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:1137:pmx_rtp_session_set_jb_latency:<PmxRtpSession@0x785b14093200> SessionID(32) Set JitterBuffer latency(1 ms)
+16:36:17.667619 188818 0x785b14012c30 INFO                pulse pulse.c:803:pulse_create_additional_rtp_session:(NULL) [cid:1 sid:1] provisioned additional rtp_session: slot=2 rtp_session=0x785b14093200
+16:36:17.667624 188818 0x785b14012c30 DEBUG     pulse_connection pulse_connection.c:337:_pulse_connection_setup_stage2_internal:(NULL) [cid:1 sid:1] stream[0] labeled as content=0 type=0 for app_transport routing
+16:36:17.667629 188818 0x785b14012c30 DEBUG     pulse_connection pulse_connection.c:337:_pulse_connection_setup_stage2_internal:(NULL) [cid:1 sid:1] stream[1] labeled as content=0 type=1 for app_transport routing
+16:36:17.667634 188818 0x785b14012c30 DEBUG     pulse_connection pulse_connection.c:337:_pulse_connection_setup_stage2_internal:(NULL) [cid:1 sid:1] stream[2] labeled as content=1 type=1 for app_transport routing
+16:36:17.667638 188818 0x785b14012c30 DEBUG                pulse pulse.c:579:pulse_apply_app_transport_unlocked:(NULL) [cid:1 sid:1] (re)applying app_transport binding to num_streams=3 (generation=1)
+16:36:17.667644 188818 0x785b14012c30 DEBUG                pulse pulse.c:603:pulse_apply_app_transport_unlocked:(NULL) [cid:1 sid:1] app_transport: binding slot=0 rtp_session=0x5a78f9a5db20 content=MAIN type=audio
+16:36:17.667649 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(27) Set app transport (cb=0x785be0307810)
+16:36:17.667656 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b1410e750 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:17.667664 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, app-transport=(structure)"app-transport\,\ enabled\=\(boolean\)true\;";
+16:36:17.667664 188818 0x5a78f99cac40 INFO pmx_sessionbwman_debug pmxsessionbwman.c:422:_notify_new_bitrate_async:(NULL) About to notify new bitrate: 4096000
+16:36:17.667674 188818 0x785b14012c30 DEBUG                pulse pulse.c:603:pulse_apply_app_transport_unlocked:(NULL) [cid:1 sid:1] app_transport: binding slot=1 rtp_session=0x785b14016b00 content=MAIN type=video
+16:36:17.667687 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(31) Set app transport (cb=0x785be0307810)
+16:36:17.667692 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b1410e750 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.667697 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, app-transport=(structure)"app-transport\,\ enabled\=\(boolean\)true\;";
+16:36:17.667728 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:1873:gst_app_src_set_caps:<appsrc6> setting caps to application/x-dtls
+16:36:17.667736 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc6> caps: (NULL)
+16:36:17.667747 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc6> starting
+16:36:17.667889 188818 0x785b88002e30 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc6> unlock stop
+16:36:17.667907 188818 0x785b88002e30 DEBUG               appsrc gstappsrc.c:1621:gst_app_src_create:<appsrc6> pop caps application/x-dtls
+16:36:17.667981 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc6> caps: application/x-dtls
+16:36:17.668008 188818 0x785b14012c30 DEBUG                pulse pulse.c:603:pulse_apply_app_transport_unlocked:(NULL) [cid:1 sid:1] app_transport: binding slot=2 rtp_session=0x785b14093200 content=PRESENTATION type=video
+16:36:17.668012 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(32) Set app transport (cb=0x785be0307810)
+16:36:17.668018 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b1410e750 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.668024 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, app-transport=(structure)"app-transport\,\ enabled\=\(boolean\)true\;";
+16:36:17.668048 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:1873:gst_app_src_set_caps:<appsrc7> setting caps to application/x-dtls
+16:36:17.668055 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc7> caps: (NULL)
+16:36:17.668067 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc7> starting
+16:36:17.668160 188818 0x785b880030b0 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc7> unlock stop
+16:36:17.668177 188818 0x785b880030b0 DEBUG               appsrc gstappsrc.c:1621:gst_app_src_create:<appsrc7> pop caps application/x-dtls
+16:36:17.668226 188818 0x785b14012c30 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc7> caps: application/x-dtls
+16:36:17.668254 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:2119:_setup_from_sdp_internal:(NULL) Setup from SDP Participant=0x5a78f99d79c0 RTPSession=0x5a78f9a5db20 DTLSConfig=(nil), RecvSDP=0x5a78f9d52120 SendSDP=0x785b14011c30 RecvCtx=0x5a78f95c2330 SendCtx=0x5a78f95c2c48 ExInfo=0x5a78f95c3668
+16:36:17.668261 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:17.668297 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:927:pmx_util_sdp_get_meta:(NULL) SDP meta parsed: medias_len=3 bundled=0 has_candidates=0 is_trickle_ice=0 has_ice_credentials=0 bundled_candidates=0 bundled_port=0 sections=[[0]={type=audio,content=main,dir=sendrecv,active=1} [1]={type=video,content=main,dir=sendrecv,active=1} [2]={type=video,content=slides,dir=inactive,active=0}]
+16:36:17.668324 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:927:pmx_util_sdp_get_meta:(NULL) SDP meta parsed: medias_len=3 bundled=0 has_candidates=0 is_trickle_ice=0 has_ice_credentials=0 bundled_candidates=0 bundled_port=0 sections=[[0]={type=audio,content=main,dir=sendrecv,active=1} [1]={type=video,content=main,dir=sendrecv,active=1} [2]={type=video,content=slides,dir=inactive,active=0}]
+16:36:17.668440 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:17.668572 188818 0x785b14012c30 WARNING       pmx_util_debug pmxutil.c:1439:_validate_parsed_sdps:(NULL) Session extmap-allow-mixed mismatch: recv=yes send=no
+16:36:17.668578 188818 0x785b14012c30 WARNING       pmx_util_debug pmxutil.c:1445:_validate_parsed_sdps:(NULL) Session msid-semantic present in recv SDP but not in send
+16:36:17.668593 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14119ef0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:17.668603 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, crypto-config=(structure)"crypto-config\,\ srtp-enc-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:ffehTikGQpMO19KcYXW11JxfStd4PobeHtLwY2i+\\\|2\\\^48\"\,\ srtcp-enc-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:ffehTikGQpMO19KcYXW11JxfStd4PobeHtLwY2i+\\\|2\\\^48\"\;";
+16:36:17.668990 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:238:_pmx_rtp_session_add_input:<PmxRtpSession@0x5a78f9a5db20> SessionID(27) Add RTP Input MediaType(audio) InputID(11) MamaInput(0x785b1411cad0)
+16:36:17.669002 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:1027:pmx_util_set_input_context_active:(NULL) created input_id:11 for media_type:audio content_type:main
+16:36:17.669010 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:1033:pmx_util_set_input_context_active:(NULL) activated input:11 for media_type:audio content_type:main 
+16:36:17.669017 188818 0x785b14012c30 DEBUG                pulse pulse.c:4679:_pulse_on_rtp_input_state_changed:(NULL) [cid:1] Added RTP input 11 for content_type: 0 and media_type: 1
+16:36:17.669024 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:425:pmx_rtp_session_add_input_codec:(NULL) SessionID(27) Add RTP input codec pt(109), codec(OPUS)
+16:36:17.669035 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14181d60 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:17.669049 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)OPUS\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)48000\,\ payload\=\(int\)109\,\ sprop-stereo\=\(string\)0\,\ sprop-maxcapturerate\=\(string\)48000\;" >;
+16:36:17.669065 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:425:pmx_rtp_session_add_input_codec:(NULL) SessionID(27) Add RTP input codec pt(0), codec(PCMU)
+16:36:17.669076 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14181d60 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:17.669086 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)PCMU\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)8000\,\ payload\=\(int\)0\;", "application/x-rtp\,\ encoding-name\=\(string\)OPUS\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)48000\,\ payload\=\(int\)109\,\ sprop-stereo\=\(string\)0\,\ sprop-maxcapturerate\=\(string\)48000\;" >;
+16:36:17.669098 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:425:pmx_rtp_session_add_input_codec:(NULL) SessionID(27) Add RTP input codec pt(8), codec(PCMA)
+16:36:17.669108 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14181d60 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:17.669119 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)PCMU\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)8000\,\ payload\=\(int\)0\;", "application/x-rtp\,\ encoding-name\=\(string\)OPUS\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)48000\,\ payload\=\(int\)109\,\ sprop-stereo\=\(string\)0\,\ sprop-maxcapturerate\=\(string\)48000\;", "application/x-rtp\,\ encoding-name\=\(string\)PCMA\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)8000\,\ payload\=\(int\)8\;" >;
+16:36:17.669132 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:425:pmx_rtp_session_add_input_codec:(NULL) SessionID(27) Add RTP input codec pt(101), codec(TELEPHONE-EVENT)
+16:36:17.669140 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14182c20 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:17.669155 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)PCMU\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)8000\,\ payload\=\(int\)0\;", "application/x-rtp\,\ encoding-name\=\(string\)OPUS\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)48000\,\ payload\=\(int\)109\,\ sprop-stereo\=\(string\)0\,\ sprop-maxcapturerate\=\(string\)48000\;", "application/x-rtp\,\ encoding-name\=\(string\)PCMA\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)8000\,\ payload\=\(int\)8\;", "application/x-rtp\,\ encoding-name\=\(string\)TELEPHONE-EVENT\,\ media\=\(string\)audio\,\ clock-rate\=\(int\)48000\,\ payload\=\(int\)101\;" >;
+16:36:17.669171 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14182c20 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_27
+16:36:17.669179 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, crypto-config=(structure)"crypto-config\,\ srtp-dec-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:u1Ho5sJvM9GW+HYPZ4xXduRzHrvaujRbA9mZooBj\\\|2\\\^48\"\,\ srtcp-dec-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:u1Ho5sJvM9GW+HYPZ4xXduRzHrvaujRbA9mZooBj\\\|2\\\^48\"\;";
+16:36:17.669195 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:438:pmx_rtp_session_add_output_codec:(NULL) SessionID(27) Add RTP output codec PayloadType(109), Codec(8:OPUS)
+16:36:17.669202 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:449:pmx_rtp_session_add_output_codec:(NULL) SessionID(27) Generated new codec object with CodecID(31) Payload(109)
+16:36:17.669208 188818 0x785b14012c30 WARNING       pmx_util_debug pmxutil.c:1857:_configure_pmx_from_parsed:(NULL) Skipping output codec (codec already set) mid:0 pt:0 codec:PCMU
+16:36:17.669212 188818 0x785b14012c30 WARNING       pmx_util_debug pmxutil.c:1857:_configure_pmx_from_parsed:(NULL) Skipping output codec (codec already set) mid:0 pt:8 codec:PCMA
+16:36:17.669216 188818 0x785b14012c30 WARNING       pmx_util_debug pmxutil.c:1857:_configure_pmx_from_parsed:(NULL) Skipping output codec (codec already set) mid:0 pt:101 codec:TELEPHONE-EVENT
+16:36:17.669221 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:699:_pmx_rtp_session_add_output:(NULL) SessionID(27) Add RTP output MediaType(audio), OutputID(12)
+16:36:17.669265 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:1077:pmx_util_set_output_context_active:(NULL) created output_id:12 for media_type:audio content_type:main codec_id:31
+16:36:17.669270 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:1085:pmx_util_set_output_context_active:(NULL) activated output_id:12 for media_type:audio content_type:main codec_id:31
+16:36:17.669276 188818 0x785b14012c30 DEBUG          pulse_bwman pulse_bwman.c:104:pulse_bw_man_register_output:(NULL) [cid:1] Registered output_id: 12, media_type: 1, content_type: 0
+16:36:17.669281 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:348:pmx_rtp_session_set_input_ssrc:<PmxRtpSession@0x5a78f9a5db20> SessionID(27) Set Input SSRC. NewSSRC(0x69bc1ef9) InputID(11)
+16:36:17.669313 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:371:pmx_rtp_session_set_output_ssrc:<PmxRtpSession@0x5a78f9a5db20> SessionID(27) Set Output SSRC. NewSSRC(0x22b13cf3) OutputID(12)
+16:36:17.669322 188818 0x785b14012c30 INFO     pulse_connection pulse_connection.c:359:_pulse_connection_setup_stage2_internal:(NULL) [cid:1 sid:1] setup_from_sdp_section(0) ok: rtp_session=0x5a78f9a5db20 recv_ctx.num_entries=1 send_ctx.num_entries=1
+16:36:17.669328 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:2119:_setup_from_sdp_internal:(NULL) Setup from SDP Participant=0x5a78f99d79c0 RTPSession=0x785b14016b00 DTLSConfig=(nil), RecvSDP=0x5a78f9d52120 SendSDP=0x785b14011c30 RecvCtx=0x5a78f95c36b0 SendCtx=0x5a78f95c3fc8 ExInfo=0x5a78f95c49e8
+16:36:17.669357 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:927:pmx_util_sdp_get_meta:(NULL) SDP meta parsed: medias_len=3 bundled=0 has_candidates=0 is_trickle_ice=0 has_ice_credentials=0 bundled_candidates=0 bundled_port=0 sections=[[0]={type=audio,content=main,dir=sendrecv,active=1} [1]={type=video,content=main,dir=sendrecv,active=1} [2]={type=video,content=slides,dir=inactive,active=0}]
+16:36:17.669383 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:927:pmx_util_sdp_get_meta:(NULL) SDP meta parsed: medias_len=3 bundled=0 has_candidates=0 is_trickle_ice=0 has_ice_credentials=0 bundled_candidates=0 bundled_port=0 sections=[[0]={type=audio,content=main,dir=sendrecv,active=1} [1]={type=video,content=main,dir=sendrecv,active=1} [2]={type=video,content=slides,dir=inactive,active=0}]
+16:36:17.669521 188818 0x785b14012c30 WARNING       pmx_util_debug pmxutil.c:1439:_validate_parsed_sdps:(NULL) Session extmap-allow-mixed mismatch: recv=yes send=no
+16:36:17.669526 188818 0x785b14012c30 WARNING       pmx_util_debug pmxutil.c:1445:_validate_parsed_sdps:(NULL) Session msid-semantic present in recv SDP but not in send
+16:36:17.669569 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b1416fd40 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.669578 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, crypto-config=(structure)"crypto-config\,\ srtp-enc-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:SzXwKHFauKKEofuhlMVJ/FfqcSbJeMGUtRy+O9Fm\\\|2\\\^48\"\,\ srtcp-enc-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:SzXwKHFauKKEofuhlMVJ/FfqcSbJeMGUtRy+O9Fm\\\|2\\\^48\"\;";
+16:36:17.670573 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:238:_pmx_rtp_session_add_input:<PmxRtpSession@0x785b14016b00> SessionID(31) Add RTP Input MediaType(video) InputID(13) MamaInput(0x785b14154cf0)
+16:36:17.670586 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:1027:pmx_util_set_input_context_active:(NULL) created input_id:13 for media_type:video content_type:main
+16:36:17.670595 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:1033:pmx_util_set_input_context_active:(NULL) activated input:13 for media_type:video content_type:main 
+16:36:17.670601 188818 0x785b14012c30 DEBUG                pulse pulse.c:4679:_pulse_on_rtp_input_state_changed:(NULL) [cid:1] Added RTP input 13 for content_type: 0 and media_type: 2
+16:36:17.670608 188818 0x785b14012c30 INFO            pmx_debug pmx.c:1083:pmx_root_set_parsed_perfect_stream:<PmxRoot@0x5a78f95c96b0> Set parsed stream InputID(13), Enable(TRUE)
+16:36:17.670614 188818 0x785b14012c30 INFO            pmx_debug pmx.c:2305:pmx_root_set_video_producer_max_queue_size:<PmxRoot@0x5a78f95c96b0> Set video producer max-queue-size -1 for InputID(13)
+16:36:17.670624 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:425:pmx_rtp_session_add_input_codec:(NULL) SessionID(31) Add RTP input codec pt(96), codec(H264)
+16:36:17.670633 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b141accd0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.670644 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)H264\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)96\,\ rtcp-fb-nack-pli\=\(boolean\)true\;" >;
+16:36:17.670657 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b141accd0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.670668 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, crypto-config=(structure)"crypto-config\,\ srtp-dec-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:xypG99QruEPttoWh5sgVZbX5QGzIRQGVKtIVxL8Z\\\|2\\\^48\"\,\ srtcp-dec-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:xypG99QruEPttoWh5sgVZbX5QGzIRQGVKtIVxL8Z\\\|2\\\^48\"\;";
+16:36:17.670683 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:438:pmx_rtp_session_add_output_codec:(NULL) SessionID(31) Add RTP output codec PayloadType(96), Codec(22:H264)
+16:36:17.670692 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:449:pmx_rtp_session_add_output_codec:(NULL) SessionID(31) Generated new codec object with CodecID(32) Payload(96)
+16:36:17.670699 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:699:_pmx_rtp_session_add_output:(NULL) SessionID(31) Add RTP output MediaType(video), OutputID(14)
+16:36:17.670725 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:350:pmx_session_bw_man_create_stream_bw_man:(NULL) Create StreamBWMan SessionID(31) OutputID(14)
+16:36:17.670729 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxbwdispatcher.c:62:pmx_bw_dispatcher_create_stream:(NULL) Create StreamBWMan SessionID(31) OutputID(14)
+16:36:17.670752 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:17.670800 188818 0x785b14012c30 INFO     pmxbwapportioner pmxbwapportioner.c:374:pmx_bw_apportioner_apportion:(NULL) Result: output_id=14 content_type=0 allocated=4096 kbps
+16:36:17.670805 188818 0x785b14012c30 INFO pmx_streambwman_debug pmxstreambwman.c:68:pmx_stream_bw_man_set_max_tx_kbps:(NULL) OutputID(14) Set MaxTxKbps(4096)
+16:36:17.670847 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:1077:pmx_util_set_output_context_active:(NULL) created output_id:14 for media_type:video content_type:main codec_id:32
+16:36:17.670852 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:1085:pmx_util_set_output_context_active:(NULL) activated output_id:14 for media_type:video content_type:main codec_id:32
+16:36:17.670858 188818 0x785b14012c30 DEBUG          pulse_bwman pulse_bwman.c:104:pulse_bw_man_register_output:(NULL) [cid:1] Registered output_id: 14, media_type: 2, content_type: 0
+16:36:17.670862 188818 0x785b14012c30 DEBUG          pulse_bwman pulse_bwman.c:115:pulse_bw_man_register_output:(NULL) [cid:1] New RTP output (14) for video added, adding video-bucket
+16:36:17.670868 188818 0x785b14012c30 INFO            pmx_debug pmx.c:810:pmx_root_set_video_bucket:<PmxRoot@0x5a78f95c96b0> Set Video-Bucket (video/x-raw, width=(int)[1, 1920], height=(int)[1, 1080], format=(string)I420, framerate=(fraction)30/1) for OutputID(14)
+16:36:17.670880 188818 0x785b14012c30 INFO  pmx_bucketman_debug pmxbucketman.c:520:pmx_bucket_man_add_from_caps:(NULL) caps: video/x-raw, width=(int)[ 1, 1920 ], height=(int)[ 1, 1080 ], format=(string)I420, framerate=(fraction)30/1
+16:36:17.671109 188818 0x785b14012c30 INFO            pmx_debug pmx.c:743:pmx_root_set_video_encoder_preset:<PmxRoot@0x5a78f95c96b0> Set VideoEncPreset(default) for OutputID(14)
+16:36:17.671114 188818 0x785b14012c30 DEBUG                pulse pulse.c:4720:_pulse_on_rtp_output_state_changed:(NULL) Setting encoder preset: 'PMX_VIDEO_ENC_PRESET_DEFAULT' on rtp output_id:14 (
+16:36:17.671119 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:348:pmx_rtp_session_set_input_ssrc:<PmxRtpSession@0x785b14016b00> SessionID(31) Set Input SSRC. NewSSRC(0x4496b2de) InputID(13)
+16:36:17.671152 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:371:pmx_rtp_session_set_output_ssrc:<PmxRtpSession@0x785b14016b00> SessionID(31) Set Output SSRC. NewSSRC(0x62b72951) OutputID(14)
+16:36:17.671158 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:759:pmx_rtp_session_add_rtx_recv:<PmxRtpSession@0x785b14016b00> SessionID(31) Add RTX recv pt(96) RTXpt(120) SSRC(0x4496b2de) RTX-SSRC(0x1c07c500)
+16:36:17.671176 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b141d62b0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.671189 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)RTX\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)120\;", "application/x-rtp\,\ encoding-name\=\(string\)H264\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)96\,\ rtcp-fb-nack-pli\=\(boolean\)true\;" >;
+16:36:17.671202 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b141d62b0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.671211 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, recv-rtx-ssrc-map=(structure)"recv_rtx_ssrc_map\,\ 1150726878\=\(uint\)470271232\;", recv-rtx-pt-map=(structure)"recv_rtx_pt_map\,\ 96\=\(uint\)120\;";
+16:36:17.671220 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:793:pmx_rtp_session_add_rtx_send:<PmxRtpSession@0x785b14016b00> SessionID(31) Add RTX send pt(96) RTXpt(120) SSRC(0x62b72951) RTX-SSRC(0x2a77caa3)
+16:36:17.671229 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b141d6fe0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.671239 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)RTX\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)120\;", "application/x-rtp\,\ encoding-name\=\(string\)H264\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)96\,\ rtcp-fb-nack-pli\=\(boolean\)true\;" >;
+16:36:17.671250 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b141d6fe0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:17.671257 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, send-rtx-pt-map=(structure)"send_rtx_pt_map\,\ 96\=\(uint\)120\;", send-rtx-ssrc-map=(structure)"send_rtx_ssrc_map\,\ 1656170833\=\(uint\)712493731\;";
+16:36:17.671468 188818 0x785b14012c30 INFO     pulse_connection pulse_connection.c:359:_pulse_connection_setup_stage2_internal:(NULL) [cid:1 sid:1] setup_from_sdp_section(1) ok: rtp_session=0x785b14016b00 recv_ctx.num_entries=1 send_ctx.num_entries=1
+16:36:17.671476 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:2119:_setup_from_sdp_internal:(NULL) Setup from SDP Participant=0x5a78f99d79c0 RTPSession=0x785b14093200 DTLSConfig=(nil), RecvSDP=0x5a78f9d52120 SendSDP=0x785b14011c30 RecvCtx=0x5a78f95c4a30 SendCtx=0x5a78f95c5348 ExInfo=0x5a78f95c5d68
+16:36:17.671501 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:927:pmx_util_sdp_get_meta:(NULL) SDP meta parsed: medias_len=3 bundled=0 has_candidates=0 is_trickle_ice=0 has_ice_credentials=0 bundled_candidates=0 bundled_port=0 sections=[[0]={type=audio,content=main,dir=sendrecv,active=1} [1]={type=video,content=main,dir=sendrecv,active=1} [2]={type=video,content=slides,dir=inactive,active=0}]
+16:36:17.671523 188818 0x785b14012c30 INFO       pmx_util_debug pmxutil.c:927:pmx_util_sdp_get_meta:(NULL) SDP meta parsed: medias_len=3 bundled=0 has_candidates=0 is_trickle_ice=0 has_ice_credentials=0 bundled_candidates=0 bundled_port=0 sections=[[0]={type=audio,content=main,dir=sendrecv,active=1} [1]={type=video,content=main,dir=sendrecv,active=1} [2]={type=video,content=slides,dir=inactive,active=0}]
+16:36:17.671646 188818 0x785b14012c30 WARNING       pmx_util_debug pmxutil.c:1439:_validate_parsed_sdps:(NULL) Session extmap-allow-mixed mismatch: recv=yes send=no
+16:36:17.671650 188818 0x785b14012c30 WARNING       pmx_util_debug pmxutil.c:1445:_validate_parsed_sdps:(NULL) Session msid-semantic present in recv SDP but not in send
+16:36:17.671661 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14155850 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.671668 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, crypto-config=(structure)"crypto-config\,\ srtp-enc-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:lGuhSGWTCinWiMxfXmSOvhn3JsEiGDxHU/k/BBw1\\\|2\\\^48\"\,\ srtcp-enc-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:lGuhSGWTCinWiMxfXmSOvhn3JsEiGDxHU/k/BBw1\\\|2\\\^48\"\;";
+16:36:17.671678 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:425:pmx_rtp_session_add_input_codec:(NULL) SessionID(32) Add RTP input codec pt(96), codec(H264)
+16:36:17.671684 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14155850 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.671691 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)H264\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)96\,\ rtcp-fb-nack-pli\=\(boolean\)true\;" >;
+16:36:17.671700 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14155850 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.671708 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, crypto-config=(structure)"crypto-config\,\ srtp-dec-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:ySB8wlT9OAUlBrurySkxAafajU7Lw5vTQyQO36+d\\\|2\\\^48\"\,\ srtcp-dec-key\=\(string\)\"AES_CM_128_HMAC_SHA1_80\\\ inline:ySB8wlT9OAUlBrurySkxAafajU7Lw5vTQyQO36+d\\\|2\\\^48\"\;";
+16:36:17.671717 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:438:pmx_rtp_session_add_output_codec:(NULL) SessionID(32) Add RTP output codec PayloadType(96), Codec(22:H264)
+16:36:17.671722 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:449:pmx_rtp_session_add_output_codec:(NULL) SessionID(32) Generated new codec object with CodecID(33) Payload(96)
+16:36:17.671728 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:759:pmx_rtp_session_add_rtx_recv:<PmxRtpSession@0x785b14093200> SessionID(32) Add RTX recv pt(96) RTXpt(122) SSRC(0x4f064b1a) RTX-SSRC(0xa3b98517)
+16:36:17.671752 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14155850 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.671761 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)RTX\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)122\;", "application/x-rtp\,\ encoding-name\=\(string\)H264\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)96\,\ rtcp-fb-nack-pli\=\(boolean\)true\;" >;
+16:36:17.671769 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14155850 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.671775 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, recv-rtx-ssrc-map=(structure)"recv_rtx_ssrc_map\,\ 1325812506\=\(uint\)2746844439\;", recv-rtx-pt-map=(structure)"recv_rtx_pt_map\,\ 96\=\(uint\)122\;";
+16:36:17.671782 188818 0x785b14012c30 INFO pmx_rtp_session_debug pmxrtpsession.c:793:pmx_rtp_session_add_rtx_send:<PmxRtpSession@0x785b14093200> SessionID(32) Add RTX send pt(96) RTXpt(122) SSRC(0xb85b742a) RTX-SSRC(0x6fb33009)
+16:36:17.671788 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14155850 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.671795 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, caps-list=(GValueArray)< "application/x-rtp\,\ encoding-name\=\(string\)RTX\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)122\;", "application/x-rtp\,\ encoding-name\=\(string\)H264\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ payload\=\(int\)96\,\ rtcp-fb-nack-pli\=\(boolean\)true\;" >;
+16:36:17.671804 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785b14155850 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:17.671811 188818 0x785b14012c30 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, send-rtx-pt-map=(structure)"send_rtx_pt_map\,\ 96\=\(uint\)122\;", send-rtx-ssrc-map=(structure)"send_rtx_ssrc_map\,\ 3093001258\=\(uint\)1874014217\;";
+16:36:17.672003 188818 0x785b14012c30 INFO     pulse_connection pulse_connection.c:359:_pulse_connection_setup_stage2_internal:(NULL) [cid:1 sid:1] setup_from_sdp_section(2) ok: rtp_session=0x785b14093200 recv_ctx.num_entries=1 send_ctx.num_entries=1
+16:36:17.672008 188818 0x785b14012c30 INFO          pulse_bwman pulse_bwman.c:48:pulse_bw_man_set_max_bitrate:(NULL) set max_kbps 2048
+16:36:17.672013 188818 0x785b14012c30 INFO pmx_participant_debug pmxparticipant.c:553:pmx_participant_set_max_tx_kbps:(NULL) ParticipantID(0) Set MaxTxKbps(2048)
+16:36:17.672016 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:320:pmx_session_bw_man_set_participant_max_tx_kbps:(NULL) SessionID(32) Set Participant MaxTxKbps(2048)
+16:36:17.672020 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:299:pmx_session_bw_man_set_max_tx_kbps:(NULL) SessionID(32) Set MaxTxKbps(2048)
+16:36:17.672025 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:320:pmx_session_bw_man_set_participant_max_tx_kbps:(NULL) SessionID(27) Set Participant MaxTxKbps(2048)
+16:36:17.672029 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:299:pmx_session_bw_man_set_max_tx_kbps:(NULL) SessionID(27) Set MaxTxKbps(2048)
+16:36:17.672033 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:320:pmx_session_bw_man_set_participant_max_tx_kbps:(NULL) SessionID(31) Set Participant MaxTxKbps(2048)
+16:36:17.672036 188818 0x785b14012c30 INFO pmx_sessionbwman_debug pmxsessionbwman.c:299:pmx_session_bw_man_set_max_tx_kbps:(NULL) SessionID(31) Set MaxTxKbps(2048)
+16:36:17.672042 188818 0x785b14012c30 INFO     pmxbwapportioner pmxbwapportioner.c:374:pmx_bw_apportioner_apportion:(NULL) Result: output_id=14 content_type=0 allocated=2048 kbps
+16:36:17.672047 188818 0x785b14012c30 INFO pmx_streambwman_debug pmxstreambwman.c:68:pmx_stream_bw_man_set_max_tx_kbps:(NULL) OutputID(14) Set MaxTxKbps(2048)
+16:36:17.672053 188818 0x785b14012c30 INFO          pulse_bwman pulse_bwman.c:271:_calculate_video_bitrate_unlocked:(NULL) [cid:1] Total bitrate: 2048000 Audio bitrate: 64000, video bitrate: 1984000 video streams: 1
+16:36:17.672058 188818 0x785b14012c30 DEBUG          pulse_bwman pulse_bwman.c:292:_set_outputs_bitrate_unlocked:(NULL) [cid:1] Setting video-bitrate 1984000 on output_id: 14
+16:36:17.672064 188818 0x785b14012c30 INFO            pmx_debug pmx.c:789:pmx_root_set_video_mix_bitrate:<PmxRoot@0x5a78f95c96b0> Set video-bitrate(1984000) for OutputID(14)
+16:36:17.672102 188818 0x5a78f99cac40 INFO pmx_sessionbwman_debug pmxsessionbwman.c:422:_notify_new_bitrate_async:(NULL) About to notify new bitrate: 2048000
+16:36:17.672111 188818 0x785b14012c30 INFO  pmx_bucketman_debug pmxbucketman.c:278:pmx_bucket_man_get_current_bucket:(NULL) Getting bucket: 1664x936,30/1fps,1962455bps, with caps: video/x-raw, width=(int)1664, height=(int)936, format=(string)I420, framerate=(fraction)30/1
+16:36:17.672130 188818 0x785b14012c30 INFO            pmx_debug pmx.c:515:pmx_root_video_connect:<PmxRoot@0x5a78f95c96b0> Video-connect InputID(6) -> OutputID(10), CodecID(18), ConnectionPoint(enum-val=2)
+16:36:17.672137 188818 0x785b14012c30 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x5a78f9d3da70:10) Codec((null)) Encoder((null)), clock-rate(0), pt(255), SSRC(0x00000000)
+16:36:17.672148 188818 0x5a78f99cac40 INFO pmx_sessionbwman_debug pmxsessionbwman.c:422:_notify_new_bitrate_async:(NULL) About to notify new bitrate: 2048000
+16:36:17.672153 188818 0x5a78f99cac40 INFO pmx_sessionbwman_debug pmxsessionbwman.c:422:_notify_new_bitrate_async:(NULL) About to notify new bitrate: 2048000
+16:36:17.672166 188818 0x785b14012c30 INFO            pmx_debug pmx.c:515:pmx_root_video_connect:<PmxRoot@0x5a78f95c96b0> Video-connect InputID(6) -> OutputID(14), CodecID(32), ConnectionPoint(enum-val=0)
+16:36:17.672174 188818 0x785b14012c30 INFO  pmx_bucketman_debug pmxbucketman.c:278:pmx_bucket_man_get_current_bucket:(NULL) Getting bucket: 1664x936,30/1fps,1962455bps, with caps: video/x-raw, width=(int)1664, height=(int)936, format=(string)I420, framerate=(fraction)30/1
+16:36:17.672185 188818 0x785b14012c30 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x785b141ad210:14) Codec(H264) Encoder((null)), clock-rate(90000), pt(96), SSRC(0x62b72951)
+16:36:17.673533 188818 0x785b14012c30 INFO            pmx_debug pmx.c:594:pmx_root_audio_connect_mixing_group:<PmxRoot@0x5a78f95c96b0> Audio-connect mixing-group OutputID(12), MixingGroup(0), CodecID(31)
+16:36:17.673550 188818 0x785b14012c30 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x785b141846d0:12) Codec(OPUS) Encoder((null)), clock-rate(48000), pt(109), SSRC(0x22b13cf3)
+16:36:17.674009 188818 0x785b14012c30 INFO            pmx_debug pmx.c:515:pmx_root_video_connect:<PmxRoot@0x5a78f95c96b0> Video-connect InputID(13) -> OutputID(9), CodecID(18), ConnectionPoint(enum-val=2)
+16:36:17.674022 188818 0x785b14012c30 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x5a78f9d30780:9) Codec((null)) Encoder((null)), clock-rate(0), pt(255), SSRC(0x00000000)
+16:36:17.674162 188818 0x785b14012c30 INFO            pmx_debug pmx.c:566:pmx_root_audio_connect:<PmxRoot@0x5a78f95c96b0> Audio-connect InputID(11) -> OutputID(8), CodecID(1), ConnectionPoint(enum-val=2), ExtraParams((nil))
+16:36:17.674171 188818 0x785b14012c30 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x5a78f9b7e890:8) Codec((null)) Encoder((null)), clock-rate(0), pt(255), SSRC(0x00000000)
+16:36:17.674      tsx0x5a78f9d541e8  Timeout timer event
+16:36:17.674      tsx0x5a78f9d541e8  .State changed from Terminated to Destroyed, event=TIMER
+16:36:17.674      tsx0x5a78f9d541e8  Transaction destroyed!
+16:36:23.176597 188818 0x785b1416ccc0 WARNING                pulse pulse.c:4277:pulse_handle_in_call_stats:(NULL) [cid:1 sid:1] No RTP activity for more than 0:00:05.000000000
+16:36:23.176642 188818 0x785b1416ccc0 INFO                pulse pulse.c:3264:pulse_update_conference_status_info:(NULL) Reported conference status-info: reconnecting blocked:true current_service_type:0
+16:36:23.176655 188818 0x785b1416ccc0 DEBUG                pulse pulse.c:2145:pulse_disconnect_internal_unlocked:(NULL) [cid:1] pulse_disconnect_internal enter. release_token:false is_reconnect:false connection_lost:true
+16:36:23.176664 188818 0x785b1416ccc0 INFO                pulse pulse.c:3264:pulse_update_conference_status_info:(NULL) Reported conference status-info: disconnecting blocked:true current_service_type:0
+16:36:23.176689 188818 0x785b1416ccc0 INFO            pmx_debug pmx.c:545:pmx_root_video_disconnect:<PmxRoot@0x5a78f95c96b0> Video-disconnect OutputID(9)
+16:36:23.176928 188818 0x785b1416ccc0 INFO            pmx_debug pmx.c:645:pmx_root_audio_disconnect:<PmxRoot@0x5a78f95c96b0> Audio-disconnect OutputID(8)
+16:36:23.177074 188818 0x785b1416ccc0 INFO pmx_rtp_session_debug pmxrtpsession.c:1451:pmx_rtp_session_set_state:<PmxRtpSession@0x5a78f9a5db20> SessionID(27) Set state(stopped) StateChangeResult((nil))
+16:36:23.192246 188818 0x785b1416ccc0 DEBUG                pulse pulse.c:2739:pulse_add_local_input_unlocked:(NULL) [cid:1] Adding input: 0 for media_content: MAIN, media_type: VIDEO, loopback: 2 and session_type: GFX
+16:36:23.192283 188818 0x785b1416ccc0 INFO            pmx_debug pmx.c:2140:pmx_root_temp_fixme_mix_video_with_layout_entries:<PmxRoot@0x5a78f95c96b0> Mix-video-with-layout-event OutputID(9) Num-entries(1) CodecID(18) Background(0x0)
+16:36:23.192325 188818 0x785b1416ccc0 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x5a78f9d30780:9) Codec((null)) Encoder((null)), clock-rate(0), pt(255), SSRC(0x00000000)
+16:36:23.192948 188818 0x785b1416ccc0 DEBUG pulse_rest_conference_event_subscriber pulse_rest_conference_event_subscriber.c:122:pulse_rest_conference_event_subscriber_exit:(NULL) [cid:1 sid:1] Exiting...
+16:36:23.193225 188818 0x785b1416ccc0 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(27) Set app transport (cb=(nil))
+16:36:23.193241 188818 0x785b1416ccc0 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(31) Set app transport (cb=(nil))
+16:36:23.193251 188818 0x785b1416ccc0 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(32) Set app transport (cb=(nil))
+16:36:23.193258 188818 0x785b1416ccc0 INFO pmx_participant_debug pmxparticipant.c:488:pmx_participant_remove_rtp_session:(NULL) ParticipantID(0) Remove RTPSessionID(27)
+16:36:23.193663 188818 0x5a78f99cac40 INFO pmx_rtp_session_debug pmxrtpsession.c:207:_pmx_rtp_input_notify_dispose_cb:<PmxRtpSession@0x5a78f9a5db20> SessionID(27)
+16:36:23.193678 188818 0x5a78f99cac40 INFO            pmx_debug pmxmamainput.c:546:pmx_mama_input_free:(NULL) MamaInput(0x785b1411cad0:11) Free input!
+16:36:23.193832 188818 0x5a78f99cac40 INFO pmx_rtp_session_debug pmxrtpsession.c:1612:pmx_rtp_session_free:<PmxRtpSession@0x5a78f9a5db20> Free SessionID(27)
+16:36:23.193917 188818 0x5a78f99cac40 DEBUG               appsrc gstappsrc.c:1137:gst_app_src_unlock:<appsrc2> unlock start
+16:36:23.193944 188818 0x5a78f99cac40 DEBUG               appsrc gstappsrc.c:1137:gst_app_src_unlock:<appsrc2> unlock start
+16:36:23.193984 188818 0x785b88001320 DEBUG               appsrc gstappsrc.c:1811:gst_app_src_create:<appsrc2> we are flushing
+16:36:23.194073 188818 0x5a78f99cac40 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc2> unlock stop
+16:36:23.194090 188818 0x5a78f99cac40 DEBUG               appsrc gstappsrc.c:1191:gst_app_src_stop:<appsrc2> stopping
+16:36:23.194903 188818 0x5a78f99cac40 DEBUG               appsrc gstappsrc.c:1137:gst_app_src_unlock:<appsrc3> unlock start
+16:36:23.194917 188818 0x5a78f99cac40 DEBUG               appsrc gstappsrc.c:1137:gst_app_src_unlock:<appsrc3> unlock start
+16:36:23.194969 188818 0x785b88001a70 DEBUG               appsrc gstappsrc.c:1811:gst_app_src_create:<appsrc3> we are flushing
+16:36:23.194999 188818 0x5a78f99cac40 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc3> unlock stop
+16:36:23.195002 188818 0x5a78f99cac40 DEBUG               appsrc gstappsrc.c:1191:gst_app_src_stop:<appsrc3> stopping
+16:36:23.195132 188818 0x5a78f99cac40 INFO pmx_rtp_session_debug pmxrtpsession.c:1632:pmx_rtp_session_free:<PmxRtpSession@0x5a78f9a5db20> Freed SessionID(27)
+16:36:23.195154 188818 0x785b1416ccc0 INFO pmx_participant_debug pmxparticipant.c:345:pmx_participant_create_rtp_session:(NULL) ParticipantID(0) Create SessionID(33)
+16:36:23.195172 188818 0x785b1416ccc0 INFO pmx_sessionbwman_debug pmxsessionbwman.c:320:pmx_session_bw_man_set_participant_max_tx_kbps:(NULL) SessionID(33) Set Participant MaxTxKbps(2048)
+16:36:23.195177 188818 0x785b1416ccc0 INFO pmx_sessionbwman_debug pmxsessionbwman.c:299:pmx_session_bw_man_set_max_tx_kbps:(NULL) SessionID(33) Set MaxTxKbps(2048)
+16:36:23.195186 188818 0x785b1416ccc0 INFO pmx_rtp_session_debug pmxrtpsession.c:1535:pmx_rtp_session_new:<PmxRtpSession@0x785ae403b6c0> New SessionID(33) ParticipantID(0) BWMan(0x785ae4003550) StatsMan(0x5a78f99d7bb0)
+16:36:23.195193 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:260:pex_papa_bin_create_recv_pad:<pexpapabin0> create pad send_sink_0_33
+16:36:23.195358 188818 0x785b1416ccc0 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc8> caps: (NULL)
+16:36:23.195506 188818 0x785b1416ccc0 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc8> starting
+16:36:23.195569 188818 0x785b1416ccc0 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtp_src_33 from rtpbin (0x5a78f9a61c60)
+16:36:23.195582 188818 0x785b1416ccc0 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtp_sink_33 from rtpbin (0x5a78f9a61c60)
+16:36:23.195621 188818 0x785b88001320 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc8> unlock stop
+16:36:23.195644 188818 0x785b1416ccc0 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:send_rtcp_src_33 from rtpbin (0x5a78f9a61c60)
+16:36:23.195712 188818 0x785b1416ccc0 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:recv_rtp_sink_33 from rtpbin (0x5a78f9a61c60)
+16:36:23.195733 188818 0x785b1416ccc0 INFO           pexpapabin papaparticipant.c:129:papa_participant_pad_added:<pexpapabin0> got pad rtpbin_0:recv_rtcp_sink_33 from rtpbin (0x5a78f9a61c60)
+16:36:23.196148 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785ae434f000 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_33
+16:36:23.196161 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, rtcp-interval=(guint64)200000000;
+16:36:23.196172 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785ae434f000 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_33
+16:36:23.196178 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, transport-stats-notify-interval=(uint)200;
+16:36:23.196187 188818 0x785b1416ccc0 INFO pmx_rtp_session_debug pmxrtpsession.c:1137:pmx_rtp_session_set_jb_latency:<PmxRtpSession@0x785ae403b6c0> SessionID(33) Set JitterBuffer latency(1 ms)
+16:36:23.196204 188818 0x785b1416ccc0 DEBUG                pulse pulse.c:579:pulse_apply_app_transport_unlocked:(NULL) [cid:1 sid:-1] (re)applying app_transport binding to num_streams=3 (generation=1)
+16:36:23.196204 188818 0x5a78f99cac40 INFO pmx_sessionbwman_debug pmxsessionbwman.c:422:_notify_new_bitrate_async:(NULL) About to notify new bitrate: 2048000
+16:36:23.196211 188818 0x785b1416ccc0 DEBUG                pulse pulse.c:603:pulse_apply_app_transport_unlocked:(NULL) [cid:1 sid:-1] app_transport: binding slot=0 rtp_session=0x785ae403b6c0 content=MAIN type=audio
+16:36:23.196216 188818 0x785b1416ccc0 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(33) Set app transport (cb=0x785be0307810)
+16:36:23.196224 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785ae43544d0 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_33
+16:36:23.196232 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, app-transport=(structure)"app-transport\,\ enabled\=\(boolean\)true\;";
+16:36:23.196253 188818 0x785b1416ccc0 DEBUG               appsrc gstappsrc.c:1873:gst_app_src_set_caps:<appsrc9> setting caps to application/x-dtls
+16:36:23.196263 188818 0x785b1416ccc0 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc9> caps: (NULL)
+16:36:23.196273 188818 0x785b1416ccc0 DEBUG               appsrc gstappsrc.c:1167:gst_app_src_start:<appsrc9> starting
+16:36:23.196359 188818 0x785b88001a70 DEBUG               appsrc gstappsrc.c:1152:gst_app_src_unlock_stop:<appsrc9> unlock stop
+16:36:23.196378 188818 0x785b88001a70 DEBUG               appsrc gstappsrc.c:1621:gst_app_src_create:<appsrc9> pop caps application/x-dtls
+16:36:23.196402 188818 0x785b1416ccc0 DEBUG               appsrc gstappsrc.c:921:gst_app_src_internal_get_caps:<appsrc9> caps: application/x-dtls
+16:36:23.196427 188818 0x785b1416ccc0 DEBUG                pulse pulse.c:603:pulse_apply_app_transport_unlocked:(NULL) [cid:1 sid:-1] app_transport: binding slot=1 rtp_session=0x785b14016b00 content=MAIN type=video
+16:36:23.196432 188818 0x785b1416ccc0 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(31) Set app transport (cb=0x785be0307810)
+16:36:23.196437 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785ae4359720 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_31
+16:36:23.196443 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, app-transport=(structure)"app-transport\,\ enabled\=\(boolean\)true\;";
+16:36:23.196449 188818 0x785b1416ccc0 DEBUG                pulse pulse.c:603:pulse_apply_app_transport_unlocked:(NULL) [cid:1 sid:-1] app_transport: binding slot=2 rtp_session=0x785b14093200 content=PRESENTATION type=video
+16:36:23.196454 188818 0x785b1416ccc0 INFO pmx_rtp_session_debug pmxrtpsession.c:610:pmx_rtp_session_set_app_transport:(NULL) SessionID(32) Set app transport (cb=0x785be0307810)
+16:36:23.196459 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:209:pex_papa_bin_event_sink:<pexpapabin0> Received event 0x785ae4359720 (PapaSessionConfig) on pad pexpapabin0:send_sink_0_32
+16:36:23.196465 188818 0x785b1416ccc0 INFO           pexpapabin pexpapabin.c:215:pex_papa_bin_event_sink:<pexpapabin0> PapaSessionConfig: PapaSessionConfig, app-transport=(structure)"app-transport\,\ enabled\=\(boolean\)true\;";
+16:36:23.196473 188818 0x785b1416ccc0 INFO            pmx_debug pmx.c:515:pmx_root_video_connect:<PmxRoot@0x5a78f95c96b0> Video-connect InputID(6) -> OutputID(10), CodecID(18), ConnectionPoint(enum-val=2)
+16:36:23.196481 188818 0x785b1416ccc0 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x5a78f9d3da70:10) Codec((null)) Encoder((null)), clock-rate(0), pt(255), SSRC(0x00000000)
+16:36:23.196511 188818 0x785b1416ccc0 INFO            pmx_debug pmx.c:515:pmx_root_video_connect:<PmxRoot@0x5a78f95c96b0> Video-connect InputID(6) -> OutputID(14), CodecID(32), ConnectionPoint(enum-val=0)
+16:36:23.196522 188818 0x785b1416ccc0 INFO  pmx_bucketman_debug pmxbucketman.c:278:pmx_bucket_man_get_current_bucket:(NULL) Getting bucket: 1664x936,30/1fps,1962455bps, with caps: video/x-raw, width=(int)1664, height=(int)936, format=(string)I420, framerate=(fraction)30/1
+16:36:23.196532 188818 0x785b1416ccc0 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x785b141ad210:14) Codec(H264) Encoder((null)), clock-rate(90000), pt(96), SSRC(0x62b72951)
+16:36:23.196576 188818 0x785b1416ccc0 INFO            pmx_debug pmx.c:2140:pmx_root_temp_fixme_mix_video_with_layout_entries:<PmxRoot@0x5a78f95c96b0> Mix-video-with-layout-event OutputID(9) Num-entries(1) CodecID(18) Background(0x0)
+16:36:23.196593 188818 0x785b1416ccc0 INFO            pmx_debug pmxmamaoutput.c:402:pmx_mama_output_add_codec:(NULL) MamaOutput(0x5a78f9d30780:9) Codec((null)) Encoder((null)), clock-rate(0), pt(255), SSRC(0x00000000)
+16:36:23.196614 188818 0x785b1416ccc0 INFO                pulse pulse.c:3264:pulse_update_conference_status_info:(NULL) Reported conference status-info: disconnected blocked:true current_service_type:0
+16:36:23.196619 188818 0x785b1416ccc0 DEBUG                pulse pulse.c:2225:pulse_disconnect_internal_unlocked:(NULL) [cid:1] pulse_disconnect_internal leave
+16:36:23.196624 188818 0x785b1416ccc0 INFO                pulse pulse.c:4309:_pulse_in_call_stats_callback:(NULL) [cid:1] Handle in-call stats got A timeout occurred while waiting for server to respond.
+16:36:23.197576 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:23.203321 188818 0x5a78f99cac40 WARNING             pipeline gstpipeline.c:760:gst_pipeline_do_latency:<pmxpipeline> did not really configure latency of 0:00:00.000000000
+16:36:30.975             sip_util.c !.Request msg BYE/cseq=15929 (tdta0x5a78f9d521c8) created.
+16:36:30.975      inv0x5a78f9d531d8  .Sending Request msg BYE/cseq=15929 (tdta0x5a78f9d521c8)
+16:36:30.975      dlg0x5a78f9d531d8  ..Sending Request msg BYE/cseq=15929 (tdta0x5a78f9d521c8)
+16:36:30.975      tsx0x5a78f9ab6e58  ...Transaction created for Request msg BYE/cseq=15929 (tdta0x5a78f9d521c8)
+16:36:30.975      tsx0x5a78f9ab6e58  ..Sending Request msg BYE/cseq=15929 (tdta0x5a78f9d521c8) in state Null
+16:36:30.975          sip_resolve.c  ...Target '10.47.34.16:5060' type=TCP resolved to '10.47.34.16:5060' type=TCP (TCP transport)
+16:36:30.975      tsx0x5a78f9ab6e58  ...State changed from Null to Calling, event=TX_MSG
+16:36:30.975      dlg0x5a78f9d531d8  ....Transaction tsx0x5a78f9ab6e58 state changed to Calling
+16:36:30.980         sip_endpoint.c !Processing incoming message: Response msg 200/BYE/cseq=15929 (rdata0x785b140012a0)
+16:36:30.980      tsx0x5a78f9ab6e58  .Incoming Response msg 200/BYE/cseq=15929 (rdata0x785b140012a0) in state Calling
+16:36:30.980      tsx0x5a78f9ab6e58  ..State changed from Calling to Completed, event=RX_MSG
+16:36:30.980      dlg0x5a78f9d531d8  ...Received Response msg 200/BYE/cseq=15929 (rdata0x785b140012a0)
+16:36:30.980      dlg0x5a78f9d531d8  ...Transaction tsx0x5a78f9ab6e58 state changed to Completed
+16:36:30.980      inv0x5a78f9d531d8  ....State changed from CONFIRMED to DISCONNECTED, event=TSX_STATE
+16:36:30.980     tdta0x785b1400d6e8  ....Destroying txdata Request msg ACK/cseq=15928 (tdta0x785b1400d6e8)
+16:36:30.980     tdta0x5a78f9d5c718  ....Destroying txdata Request msg INVITE/cseq=15928 (tdta0x5a78f9d5c718)
+16:36:30.980      dlg0x5a78f9d531d8  .....Session count dec to 1 by mod-invite
+16:36:30.980      tsx0x5a78f9ab6e58  Timeout timer event
+16:36:30.980      tsx0x5a78f9ab6e58  .State changed from Completed to Terminated, event=TIMER
+16:36:30.980      dlg0x5a78f9d531d8  ..Transaction tsx0x5a78f9ab6e58 state changed to Terminated
+16:36:30.980      dlg0x5a78f9d531d8  ...Dialog destroyed!
+16:36:30.980      tsx0x5a78f9ab6e58  Timeout timer event
+16:36:30.980      tsx0x5a78f9ab6e58  .State changed from Terminated to Destroyed, event=TIMER
+16:36:30.980     tdta0x5a78f9d521c8  ..Destroying txdata Request msg BYE/cseq=15929 (tdta0x5a78f9d521c8)
+16:36:30.980      tsx0x5a78f9ab6e58  Transaction destroyed!
