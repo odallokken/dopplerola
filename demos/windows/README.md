@@ -28,6 +28,7 @@ the UI is marshalled back onto the WinForms thread with `BeginInvoke`.
 | File                | Purpose                                                       |
 | ------------------- | ------------------------------------------------------------- |
 | `MainForm.cs`       | The whole UI + Pulse call lifecycle, heavily commented.       |
+| `PulseNative.cs`    | A few raw `pexpulse.dll` entry points (default devices + video window handles) the managed wrapper doesn't surface. |
 | `Program.cs`        | WinForms bootstrap (`Application.Run`).                        |
 | `DopplerWin.csproj` | Targets `net8.0-windows` / `win-x64` and references `Pexip.Pulse`. |
 | `nuget.config`      | Points NuGet at the in-repo `../../sdk/windows` package folder. |
@@ -82,8 +83,28 @@ Then in the window:
 Press **Hang up** (the Connect button toggles while in a call) to leave, or just
 close the window — the app disconnects and frees the Pulse handle on the way out.
 
-This demo uses the default system microphone, camera and speaker that Pulse
-picks up. For in-window video rendering, RTMP ingest, the "Twitch mix" and the
-other more advanced building blocks, see the heavily-commented
-[`doppler`](../doppler/) demo and the larger [`pexninja`](../pexninja/)
-reference client.
+## Audio & video
+
+When you connect, the demo attaches the system's **default camera, microphone
+and speaker** to the call (`pulse_device_session_connect_system_default` for
+each of camera-in, mic-in and speaker-out) — the same thing the C
+[`doppler`](../doppler/) demo does. Without those device sessions Pulse has
+nothing to capture or play, so the call would connect but stay silent and dark
+in both directions.
+
+The video is shown **inside the window**: before connecting, the app points
+Pulse's renderers at two WinForms panels with
+`pulse_options_set_remote_video_window_handle` (the far-end video, filling the
+top of the window) and `pulse_options_set_self_view_window_handle` (your own
+camera, picture-in-picture in the bottom-right). This is the WinForms take on
+how [`pexninja`](../pexninja/) and `doppler` render video — they pull raw RGBA
+frames from a Pulse *data session* and paint them with OpenGL, whereas here we
+let Pulse draw straight into native window handles the framework already gives
+us. (The two extra entry points live in `PulseNative.cs`; the bundled managed
+wrapper doesn't surface them, so the demo p/invokes them directly.)
+
+Presentations / screen-shares are not surfaced in this simple demo (the
+presentation window handle is set to `NULL` so Pulse doesn't pop up its own
+window). For RTMP ingest, the "Twitch mix" and the other more advanced building
+blocks, see the heavily-commented [`doppler`](../doppler/) demo and the larger
+[`pexninja`](../pexninja/) reference client.

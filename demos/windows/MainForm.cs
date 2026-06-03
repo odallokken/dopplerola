@@ -3,10 +3,12 @@
 // The Pulse call lifecycle mirrors the C demo in ../../src/main.cpp:
 //
 //   1. pulse_new()                     -> create a Pulse instance (in the ctor)
-//   2. pulse_options_set_*()           -> register a few callbacks
-//   3. pulse_connect_with_rest_async() -> Connect button
-//   4. pulse_disconnect_async()        -> Hang up button
-//   5. pulse_free()                    -> on form close
+//   2. pulse_options_set_*()           -> register callbacks + point Pulse's
+//                                         video renderers at our panels
+//   3. pulse_device_session_connect_*  -> attach the default camera/mic/speaker
+//   4. pulse_connect_with_rest_async() -> Connect button
+//   5. pulse_disconnect_async()        -> Hang up button
+//   6. pulse_free()                    -> on form close
 //
 // Pulse delivers its callbacks on its own threads, so anything that touches the
 // UI is marshalled back onto the WinForms thread with BeginInvoke.
@@ -40,8 +42,24 @@ internal sealed class MainForm : Form
     private PulseAsyncOperationResultCallback? _disconnectResultCb;
 
     private bool _inCall;
+    private bool _devicesAttached;
 
     // --- controls ----------------------------------------------------------
+
+    // Panels we hand to Pulse as native render targets. Pulse paints the
+    // incoming far-end video into _remoteVideo and our own camera preview into
+    // _selfView (shown picture-in-picture in the bottom-right corner).
+    private readonly Panel _remoteVideo = new()
+    {
+        Dock = DockStyle.Fill,
+        BackColor = Color.Black,
+    };
+    private readonly Panel _selfView = new()
+    {
+        Size = new Size(200, 120),
+        BackColor = Color.FromArgb(32, 32, 32),
+        BorderStyle = BorderStyle.FixedSingle,
+    };
 
     private readonly TextBox _server = new() { Text = "" };
     private readonly TextBox _conference = new() { Text = "" };
@@ -74,6 +92,17 @@ internal sealed class MainForm : Form
 
         ConfigureCallbacks();
         pulse_options_set_application_user_agent_string(_pulse, "doppler-win/0.1");
+
+        // Host Pulse's video inside our own panels instead of letting it
+        // auto-spawn separate top-level windows. Touching .Handle forces the
+        // native window to be created so the HWNDs are valid here. These must be
+        // set before the first connect (see the note in PulseNative).
+        PulseNative.pulse_options_set_remote_video_window_handle(_pulse, _remoteVideo.Handle);
+        PulseNative.pulse_options_set_self_view_window_handle(_pulse, _selfView.Handle);
+        // We don't surface presentations in this simple demo; passing NULL keeps
+        // Pulse from popping up its own window if someone shares their screen.
+        PulseNative.pulse_options_set_presentation_video_window_handle(_pulse, IntPtr.Zero);
+
         Log("Pulse initialised. Enter a server + conference and press Connect.");
     }
 
@@ -83,8 +112,8 @@ internal sealed class MainForm : Form
     {
         Text = "Doppler — Windows Pulse demo";
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(560, 420);
-        MinimumSize = new Size(420, 320);
+        ClientSize = new Size(900, 660);
+        MinimumSize = new Size(560, 480);
 
         var grid = new TableLayoutPanel
         {
@@ -141,8 +170,38 @@ internal sealed class MainForm : Form
         grid.Controls.Add(_log, 0, 5);
         grid.SetColumnSpan(_log, 2);
 
-        Controls.Add(grid);
+        // The self-view sits picture-in-picture inside the remote video panel,
+        // pinned to the bottom-right corner as the panel resizes.
+        _selfView.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+        _remoteVideo.Controls.Add(_selfView);
+        _remoteVideo.Resize += (_, _) => PositionSelfView();
+        PositionSelfView();
+
+        // Two stacked rows: the video fills the top, the controls + log take a
+        // fixed strip along the bottom.
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // video
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 250)); // controls + log
+        root.Controls.Add(_remoteVideo, 0, 0);
+        root.Controls.Add(grid, 0, 1);
+
+        Controls.Add(root);
         AcceptButton = _connectButton;
+    }
+
+    // Keep the picture-in-picture self-view tucked into the bottom-right corner
+    // of the remote video panel.
+    private void PositionSelfView()
+    {
+        const int margin = 12;
+        _selfView.Location = new Point(
+            Math.Max(margin, _remoteVideo.ClientSize.Width - _selfView.Width - margin),
+            Math.Max(margin, _remoteVideo.ClientSize.Height - _selfView.Height - margin));
     }
 
     // --- actions -----------------------------------------------------------
@@ -177,6 +236,12 @@ internal sealed class MainForm : Form
             pin_code = _pin.Text, // may be empty
         };
 
+        // Bind the system default camera / microphone / speaker before we
+        // connect. Pulse needs a device session on each direction before any
+        // media flows, so without this the call connects but stays silent and
+        // dark in both directions.
+        AttachDefaultDevices();
+
         _progressCb = OnProgress;
         _connectResultCb = OnConnectResult;
         var progressCfg = new PulseOperationProgressCallbackConfig
@@ -203,6 +268,34 @@ internal sealed class MainForm : Form
 
         _inCall = true;
         SetBusyUi("Connecting...");
+    }
+
+    // Attach the operating system's default camera, microphone and speaker to
+    // the MAIN media content. This mirrors connect_default_devices() in the C
+    // `doppler` demo. Real apps usually enumerate devices and let the user pick
+    // (see pexninja), but the OS default is the right choice for a tiny demo.
+    // Idempotent: we only do it once per Pulse instance.
+    private void AttachDefaultDevices()
+    {
+        if (_devicesAttached)
+            return;
+
+        (string name, PulseMediaType type, PulseMediaDirection direction)[] bindings =
+        {
+            ("camera",     PulseMediaType.PULSE_MEDIA_VIDEO, PulseMediaDirection.PULSE_MEDIA_INPUT),
+            ("microphone", PulseMediaType.PULSE_MEDIA_AUDIO, PulseMediaDirection.PULSE_MEDIA_INPUT),
+            ("speaker",    PulseMediaType.PULSE_MEDIA_AUDIO, PulseMediaDirection.PULSE_MEDIA_OUTPUT),
+        };
+
+        foreach (var (name, type, direction) in bindings)
+        {
+            PulseErrorType err = PulseNative.pulse_device_session_connect_system_default(
+                _pulse, PulseMediaContent.PULSE_MEDIA_CONTENT_MAIN, type, direction);
+            if (err != PulseErrorType.PULSE_SUCCESS)
+                Log($"Failed to attach default {name}: {err}");
+        }
+
+        _devicesAttached = true;
     }
 
     private void HangUp()
