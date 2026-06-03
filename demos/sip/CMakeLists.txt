@@ -2,10 +2,10 @@
 # doppler-sip - the SIP-mode demo.
 #
 # Uses Pulse purely as a media engine; SIP signalling is handled by PJSIP.
-# See sip-demo/README.md for the flow.
+# See README.md for the flow.
 #
 # Self-contained, like pexninja/: the parent CMakeLists.txt just calls
-# add_subdirectory(sip-demo) when BUILD_DOPPLER_SIP=ON.
+# add_subdirectory(demos/sip) when BUILD_DOPPLER_SIP=ON.
 # ---------------------------------------------------------------------------
 
 # ---- System dependencies --------------------------------------------------
@@ -40,7 +40,7 @@ endif()
 # static lib so we don't tangle our backend choice with anyone else's.
 if(NOT DEFINED imgui_SOURCE_DIR)
     message(FATAL_ERROR
-        "imgui_SOURCE_DIR not set - sip-demo/ must be added from the parent "
+        "imgui_SOURCE_DIR not set - demos/sip/ must be added from the parent "
         "CMakeLists.txt after FetchContent_MakeAvailable(imgui).")
 endif()
 
