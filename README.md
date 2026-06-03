@@ -52,6 +52,7 @@ The whole thing still fits in a single, heavily-commented
 | `opt/`, `usr/`          | The extracted contents of the Pulse `.deb`s.      |
 | `pexninja/`             | The much larger reference Pulse client (optional, see below). |
 | `sip-demo/`             | A second tiny demo: Pulse as media engine + PJSIP for signalling (optional, see below). |
+| `windows/doppler-win/`  | A simple **native Windows** (WinForms) demo built on the `Pexip.Pulse` NuGet package in `nuget/` (see below). |
 | `scripts/`              | Helper scripts: `install-pjsip.sh` / `uninstall-pjsip.sh`.     |
 
 ## Build
