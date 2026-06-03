@@ -1,14 +1,14 @@
-# doppler-win
+# windows — native Windows (WinForms) demo
 
 A simple **native Windows UI** Pexip client: a tiny .NET 8 **Windows Forms** app
 that places a Pexip Infinity call using the **Pexip Pulse** NuGet package that
-was uploaded into this repo (`../../nuget/Pexip.Pulse.*.nupkg`).
+ships in this repo under [`../../sdk/windows`](../../sdk/windows).
 
-It is the Windows / C# sibling of the Linux [`doppler`](../../src/main.cpp) demo.
-Where that one uses the native C API plus Dear ImGui, this one drives Pulse
-through the managed wrapper bundled inside the NuGet package and puts a small
-WinForms window on top: type in a server + conference, press **Connect**, and a
-log pane shows the call progress until you press **Hang up**.
+It is the Windows / C# sibling of the [`doppler`](../doppler/) demo. Where that
+one uses the native C API plus Dear ImGui, this one drives Pulse through the
+managed wrapper bundled inside the NuGet package and puts a small WinForms
+window on top: type in a server + conference, press **Connect**, and a log pane
+shows the call progress until you press **Hang up**.
 
 The call lifecycle mirrors the C demo exactly:
 
@@ -30,7 +30,7 @@ the UI is marshalled back onto the WinForms thread with `BeginInvoke`.
 | `MainForm.cs`       | The whole UI + Pulse call lifecycle, heavily commented.       |
 | `Program.cs`        | WinForms bootstrap (`Application.Run`).                        |
 | `DopplerWin.csproj` | Targets `net8.0-windows` / `win-x64` and references `Pexip.Pulse`. |
-| `nuget.config`      | Points NuGet at the in-repo `../../nuget` package folder.     |
+| `nuget.config`      | Points NuGet at the in-repo `../../sdk/windows` package folder. |
 
 ## Build (on Windows)
 
@@ -40,12 +40,12 @@ Pexip.Pulse package only ships native binaries (`pexpulse.dll` and friends) for
 `win-x64`, so this targets that runtime.
 
 ```powershell
-cd windows\doppler-win
+cd demos\windows
 dotnet build -c Release
 ```
 
-`dotnet` restores `Pexip.Pulse` straight from the `nuget\` folder in this repo
-(see `nuget.config`) and copies all of the native runtime assets
+`dotnet` restores `Pexip.Pulse` straight from the `sdk\windows` folder in this
+repo (see `nuget.config`) and copies all of the native runtime assets
 (`pexpulse.dll`, `pexlgpl.dll`, `tbb12.dll`, the ONNX `share\models\…`, …) next
 to the produced `doppler-win.exe`, so there is nothing else to install.
 
@@ -85,4 +85,5 @@ close the window — the app disconnects and frees the Pulse handle on the way o
 This demo uses the default system microphone, camera and speaker that Pulse
 picks up. For in-window video rendering, RTMP ingest, the "Twitch mix" and the
 other more advanced building blocks, see the heavily-commented
-[`src/main.cpp`](../../src/main.cpp) and the larger `pexninja/` reference client.
+[`doppler`](../doppler/) demo and the larger [`pexninja`](../pexninja/)
+reference client.
