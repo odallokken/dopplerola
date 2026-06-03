@@ -186,10 +186,10 @@ target_compile_options(pexninja PRIVATE
     -Wno-sign-compare
     -Wno-missing-field-initializers)
 
-# Same RPATH treatment as the main doppler target so libpexpulse resolves
-# without LD_LIBRARY_PATH for the direct dependency. We use the directory the
-# library was actually found in (PEXPULSE_LIBDIR) rather than a hardcoded
-# <prefix>/lib, so it also works on macOS where the dylibs ship under macOs/.
+# RPATH so libpexpulse resolves without LD_LIBRARY_PATH for the direct
+# dependency. Unlike the main doppler target's hardcoded <prefix>/lib, we use
+# the directory the library was actually found in (PEXPULSE_LIBDIR) so this
+# works cross-platform — including macOS, where the dylibs ship under macOs/.
 set_target_properties(pexninja PROPERTIES
     BUILD_RPATH   "${PEXPULSE_LIBDIR}"
     INSTALL_RPATH "${PEXPULSE_LIBDIR}")

@@ -113,6 +113,13 @@ pexninja_log (const char * level, const char * fmt, ...)
 #define PEX_LOG_INFO(...) pexninja_log ("INFO   ", __VA_ARGS__)
 #define PEX_LOG_DEBUG(...) pexninja_log ("DEBUG  ", __VA_ARGS__)
 
+/* Platform directory separator (was G_DIR_SEPARATOR_S). */
+#if defined(HOST_WINDOWS)
+#define PEX_DIR_SEPARATOR_S "\\"
+#else
+#define PEX_DIR_SEPARATOR_S "/"
+#endif
+
 /* NULL-safe prefix test (was pex_str_has_prefix). */
 static inline bool
 pex_str_has_prefix (const char * str, const char * prefix)
@@ -1516,7 +1523,7 @@ get_config_file_name ()
 #endif
 
   if (prefix) {
-    snprintf (buffer, 4092, "%s%spexninja-config.txt", prefix, "/");
+    snprintf (buffer, 4092, "%s%spexninja-config.txt", prefix, PEX_DIR_SEPARATOR_S);
   }
 
   PEX_LOG_INFO ("Using config file: %s", buffer);
