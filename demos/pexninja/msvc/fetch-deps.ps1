@@ -75,6 +75,13 @@ if ($Force -or -not (Test-Path (Join-Path $gl3w 'src/gl3w.c'))) {
     $python = Get-Command python -ErrorAction SilentlyContinue
     if (-not $python) { $python = Get-Command python3 -ErrorAction SilentlyContinue }
     if (-not $python) { throw 'python is required to generate gl3w (gl3w_gen.py)' }
+    # Reject the Microsoft Store python.exe "app execution alias" stub: it lives
+    # under …\Microsoft\WindowsApps and, when Python is not actually installed,
+    # just launches the Store instead of running the script — which makes gl3w
+    # generation fail with a confusing message. Point the user at a real Python.
+    if ($python.Source -like '*\Microsoft\WindowsApps\*') {
+        throw "Found the Microsoft Store python.exe stub at '$($python.Source)', which cannot run gl3w_gen.py. Install a real Python from https://www.python.org/downloads/ (or disable the 'python'/'python3' App execution aliases in Settings > Apps > Advanced app settings > App execution aliases) and re-run."
+    }
     Push-Location $gl3w
     try { & $python.Source 'gl3w_gen.py' }
     finally { Pop-Location }
