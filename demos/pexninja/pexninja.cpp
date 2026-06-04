@@ -10,6 +10,9 @@
 #endif
 #include <windows.h>
 #include <dwmapi.h>
+/* WIN32_LEAN_AND_MEAN (defined by the build) excludes <shellapi.h>, which is
+ * needed for ShellExecute below; include it explicitly. */
+#include <shellapi.h>
 #endif
 
 #if defined(HAVE_X11)
