@@ -20,7 +20,10 @@
 
 .NOTES
     Requirements: git, python (for the gl3w generator) and internet access.
-    Run once before opening pexninja.sln:
+
+    You normally do NOT need to run this by hand: the pexninja.vcxproj invokes
+    it automatically on the first build (the FetchThirdPartyDeps target). It is
+    kept runnable on its own for troubleshooting or to pre-stage the deps:
 
         powershell -ExecutionPolicy Bypass -File .\fetch-deps.ps1
 #>
@@ -95,7 +98,8 @@ if ($Force -or -not (Test-Path (Join-Path $glfwDir 'include/GLFW/glfw3.h'))) {
 }
 
 Write-Host ''
-Write-Host 'All dependencies are ready. Now restore + build:' -ForegroundColor Green
-Write-Host '    nuget restore pexninja.sln'
-Write-Host '    msbuild pexninja.sln /p:Configuration=Release /p:Platform=x64'
-Write-Host 'or just open pexninja.sln in Visual Studio 2022 and build.'
+Write-Host 'All third-party dependencies are ready.' -ForegroundColor Green
+Write-Host 'The pexninja.vcxproj restores the Pexip.Pulse NuGet and builds on its'
+Write-Host 'own — just open pexninja.sln in Visual Studio 2022 and press Build/Run,'
+Write-Host 'or from the command line:'
+Write-Host '    msbuild -restore pexninja.sln /p:Configuration=Release /p:Platform=x64'
