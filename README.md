@@ -72,12 +72,13 @@ the opt-in demos with their options, e.g. `-DBUILD_PEXNINJA=ON` or
 `-DBUILD_DOPPLER_SIP=ON` — see each demo's README for details.
 
 Each demo ships a generated `run-<demo>.sh` launcher that puts Pulse's private
-sibling libraries on the dynamic-linker search path. If you'd rather run the
+sibling libraries on the dynamic-linker search path and exports `PEX_BASE_PATH`
+(the Pulse runtime aborts at startup without it). If you'd rather run the
 binary directly:
 
 ```bash
-LD_LIBRARY_PATH=/opt/pexip/lib ./build/demos/doppler/doppler
-# or, system-wide:
+PEX_BASE_PATH=/opt/pexip LD_LIBRARY_PATH=/opt/pexip/lib ./build/demos/doppler/doppler
+# or, system-wide (still set PEX_BASE_PATH in your environment):
 echo /opt/pexip/lib | sudo tee /etc/ld.so.conf.d/pexip.conf && sudo ldconfig
 ```
 
