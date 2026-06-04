@@ -49,9 +49,10 @@ GLFW) are fetched at the same pinned versions used here.
 
 ```powershell
 cd msvc
-powershell -ExecutionPolicy Bypass -File .\fetch-deps.ps1
-nuget restore pexninja.sln
-msbuild pexninja.sln /p:Configuration=Release /p:Platform=x64
+# Open pexninja.sln in Visual Studio 2022 and press Build (F5 to Build + Run);
+# the first build restores the Pexip.Pulse NuGet and fetches the third-party
+# sources automatically. From the command line the equivalent one-liner is:
+msbuild -restore pexninja.sln /p:Configuration=Release /p:Platform=x64
 ```
 
 See [`msvc/README.md`](msvc/README.md) for the details.

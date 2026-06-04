@@ -26,27 +26,33 @@ the two builds stay in lock-step.
   (toolset `v143`), or the Build Tools + `msbuild`.
 * **git** and **python** on `PATH` (python is only needed once, to run gl3w's
   generator).
-* **NuGet** — either the `nuget.exe` CLI, or `dotnet`/Visual Studio's built-in
-  restore.
 * Internet access for the one-time dependency fetch + NuGet restore.
+
+NuGet itself does **not** have to be installed separately — the Pexip.Pulse
+package is consumed as a `<PackageReference>`, which Visual Studio (and
+`msbuild -restore`) restores automatically.
 
 ## Build
 
-From a *Developer PowerShell for VS 2022* in this directory:
+Just open **`pexninja.sln`** in Visual Studio 2022 and press **Build** (or
+**F5** to Build + Run). Everything happens for you on that first build:
+
+1. NuGet restores the **`Pexip.Pulse`** package from `..\..\..\sdk\windows`
+   (declared as a `PackageReference`; no manual `nuget restore` / unwrap step).
+2. The `FetchThirdPartyDeps` MSBuild target runs `fetch-deps.ps1` to stage
+   Dear ImGui *docking*, ImPlot, gl3w, ImGui-Addons and GLFW into
+   `third_party\` at the same pinned versions the
+   [CMakeLists.txt](../CMakeLists.txt) uses.
+3. pexninja is compiled and the Pulse runtime DLLs + models are copied next to
+   the `.exe`.
+
+Prefer the command line? From a *Developer PowerShell for VS 2022* in this
+directory, the single command below restores **and** builds (the
+`FetchThirdPartyDeps` target stages the third-party sources as part of it):
 
 ```powershell
-# 1. Fetch ImGui / ImPlot / gl3w / ImGui-Addons / GLFW into third_party\
-powershell -ExecutionPolicy Bypass -File .\fetch-deps.ps1
-
-# 2. Restore the Pexip.Pulse NuGet package from ..\..\..\sdk\windows
-nuget restore pexninja.sln
-
-# 3. Build
-msbuild pexninja.sln /p:Configuration=Release /p:Platform=x64
+msbuild -restore pexninja.sln /p:Configuration=Release /p:Platform=x64
 ```
-
-Or just open **`pexninja.sln`** in Visual Studio and build — but run steps 1–2
-first (the project fails fast with a clear message if either is missing).
 
 The produced executable and all of the Pulse runtime DLLs + models are copied
 to:
@@ -54,6 +60,10 @@ to:
 ```
 build\Release\pexninja.exe
 ```
+
+> The first build is slower because it fetches the third-party sources and
+> restores the NuGet package. Subsequent builds skip both (the fetch target
+> is a no-op once `third_party\` is populated).
 
 ## Run
 
@@ -69,14 +79,22 @@ conference exactly as on Linux/macOS. See the
 
 | Piece | Source | Wired up by |
 | ----- | ------ | ----------- |
-| Pulse headers + `pexpulse.lib` | `Pexip.Pulse` NuGet | `Pexip.Pulse.props` (auto-imported) |
+| Pulse headers + `pexpulse.lib` | `Pexip.Pulse` NuGet | `PackageReference` → `Pexip.Pulse.props` (auto-imported) + an explicit `build\native\include` include dir |
 | Pulse runtime DLLs + models | `Pexip.Pulse` NuGet | `CopyPulseRuntime` target → next to the `.exe` |
-| ImGui (docking), ImPlot, gl3w, ImGui-Addons | git, pinned | `fetch-deps.ps1` → `third_party\` |
-| GLFW (win-x64) | prebuilt release zip | `fetch-deps.ps1` → `third_party\glfw\` |
+| ImGui (docking), ImPlot, gl3w, ImGui-Addons | git, pinned | `FetchThirdPartyDeps` target → `fetch-deps.ps1` → `third_party\` |
+| GLFW (win-x64) | prebuilt release zip | `FetchThirdPartyDeps` target → `fetch-deps.ps1` → `third_party\glfw\` |
+
+The `Pexip.Pulse` package is referenced with `GeneratePathProperty="true"`, so
+its install location is available to the project as `$(PkgPexip_Pulse)` — used
+for the explicit Pulse include dir, the `pexpulse.lib` directory and the
+runtime-asset copy.
 
 Because the NuGet lays its headers out *flat* (`pulse.h`, not
 `pexpulse/pulse.h`), `pexninja.cpp` includes the Pulse header by its bare name
 under `HOST_WINDOWS`; on Linux/macOS it keeps using `<pexpulse/pulse.h>`.
+
+The project compiles as **C++20** (`stdcpp20`); the docking-branch ImGui and the
+Pulse headers expect C++20 on MSVC, so C++17 produced standard-version warnings.
 
 > Only **x64** is configured — `Pexip.Pulse` ships native binaries for
 > `win-x64` only.
