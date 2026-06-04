@@ -24,49 +24,29 @@
     <ClCompile Include="..\pexninja.cpp">
       <Filter>pexninja</Filter>
     </ClCompile>
-    <ClCompile Include="$(ThirdParty)\imgui\imgui.cpp">
-      <Filter>third_party\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\imgui\imgui_draw.cpp">
-      <Filter>third_party\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\imgui\imgui_tables.cpp">
-      <Filter>third_party\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\imgui\imgui_widgets.cpp">
-      <Filter>third_party\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\imgui\imgui_demo.cpp">
-      <Filter>third_party\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\imgui\backends\imgui_impl_glfw.cpp">
-      <Filter>third_party\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\imgui\backends\imgui_impl_opengl3.cpp">
-      <Filter>third_party\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\imgui\misc\cpp\imgui_stdlib.cpp">
-      <Filter>third_party\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\implot\implot.cpp">
-      <Filter>third_party\implot</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\implot\implot_items.cpp">
-      <Filter>third_party\implot</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\implot\implot_demo.cpp">
-      <Filter>third_party\implot</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\imgui-addons\FileBrowser\ImGuiFileBrowser.cpp">
-      <Filter>third_party\imgui-addons</Filter>
-    </ClCompile>
-    <ClCompile Include="$(ThirdParty)\gl3w\src\gl3w.c">
-      <Filter>third_party\gl3w</Filter>
-    </ClCompile>
+    <ClCompile Include="$(ImguiDir)\imgui.cpp" />
+    <ClCompile Include="$(ImguiDir)\imgui_draw.cpp" />
+    <ClCompile Include="$(ImguiDir)\imgui_tables.cpp" />
+    <ClCompile Include="$(ImguiDir)\imgui_widgets.cpp" />
+    <ClCompile Include="$(ImguiDir)\imgui_demo.cpp" />
+    <ClCompile Include="$(ImguiDir)\backends\imgui_impl_glfw.cpp" />
+    <ClCompile Include="$(ImguiDir)\backends\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="$(ImguiDir)\misc\cpp\imgui_stdlib.cpp" />
+    <ClCompile Include="$(ImplotDir)\implot.cpp" />
+    <ClCompile Include="$(ImplotDir)\implot_items.cpp" />
+    <ClCompile Include="$(ImplotDir)\implot_demo.cpp" />
+    <ClCompile Include="$(ImguiAddonsDir)\FileBrowser\ImGuiFileBrowser.cpp" />
+    <ClCompile Include="$(Gl3wDir)\src\gl3w.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\ImGuiUtils.h">
       <Filter>pexninja</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="nuget.config" />
+    <None Include="fetch-deps.ps1" />
+    <None Include="README.md" />
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>

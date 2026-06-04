@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-
   <!-- ====================================================================
        pexninja — native Windows (MSVC) build.
 
@@ -18,7 +17,7 @@
        and the third-party sources are fetched on the first build by the
        FetchThirdPartyDeps target below. Open pexninja.sln and press Build/Run.
        ==================================================================== -->
-
+  <Import Project="packages\Pexip.Pulse.1.0.17855-main\build\Pexip.Pulse.props" Condition="Exists('packages\Pexip.Pulse.1.0.17855-main\build\Pexip.Pulse.props')" />
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
@@ -29,16 +28,13 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
-
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <ProjectGuid>{62A831E9-F8D7-47E9-AE7E-05BC540B4366}</ProjectGuid>
     <RootNamespace>pexninja</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
-
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-
   <PropertyGroup Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <PlatformToolset>v143</PlatformToolset>
@@ -47,9 +43,7 @@
     <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
     <WholeProgramOptimization Condition="'$(Configuration)'=='Release'">true</WholeProgramOptimization>
   </PropertyGroup>
-
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
-
   <!-- The Pexip.Pulse runtime is consumed as a NuGet <PackageReference> (see
        the ItemGroup near the bottom). NuGet auto-imports the package's
        build\Pexip.Pulse.props (it adds build\native\include to the include
@@ -58,7 +52,6 @@
        $(PkgPexip_Pulse) — which we use below for the explicit include dir, the
        native lib directory and the runtime-asset copy. No packages.config /
        unwrapped packages\ folder is needed. -->
-
   <!-- Locations the project depends on. -->
   <PropertyGroup Label="DepDirs">
     <ThirdParty>$(MSBuildProjectDirectory)\third_party</ThirdParty>
@@ -73,13 +66,11 @@
     <PulsePkgDir>$(PkgPexip_Pulse)</PulsePkgDir>
     <PulseNativeDir>$(PulsePkgDir)\runtimes\win-x64\native</PulseNativeDir>
   </PropertyGroup>
-
   <PropertyGroup>
     <OutDir>$(MSBuildProjectDirectory)\build\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildProjectDirectory)\build\obj\$(Configuration)\</IntDir>
     <TargetName>pexninja</TargetName>
   </PropertyGroup>
-
   <ItemDefinitionGroup>
     <ClCompile>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -109,7 +100,6 @@
       <AdditionalDependencies>glfw3.lib;opengl32.lib;dwmapi.lib;gdi32.lib;user32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
-
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
@@ -119,7 +109,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
-
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
@@ -133,12 +122,10 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
-
   <!-- Sources. -->
   <ItemGroup>
     <!-- pexninja itself -->
     <ClCompile Include="..\pexninja.cpp" />
-
     <!-- Dear ImGui core + GLFW/OpenGL3 backends + std::string helpers -->
     <ClCompile Include="$(ImguiDir)\imgui.cpp" />
     <ClCompile Include="$(ImguiDir)\imgui_draw.cpp" />
@@ -148,25 +135,20 @@
     <ClCompile Include="$(ImguiDir)\backends\imgui_impl_glfw.cpp" />
     <ClCompile Include="$(ImguiDir)\backends\imgui_impl_opengl3.cpp" />
     <ClCompile Include="$(ImguiDir)\misc\cpp\imgui_stdlib.cpp" />
-
     <!-- ImPlot -->
     <ClCompile Include="$(ImplotDir)\implot.cpp" />
     <ClCompile Include="$(ImplotDir)\implot_items.cpp" />
     <ClCompile Include="$(ImplotDir)\implot_demo.cpp" />
-
     <!-- ImGui-Addons file browser -->
     <ClCompile Include="$(ImguiAddonsDir)\FileBrowser\ImGuiFileBrowser.cpp" />
-
     <!-- gl3w (C) — the explicit GL function loader -->
     <ClCompile Include="$(Gl3wDir)\src\gl3w.c">
       <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
   </ItemGroup>
-
   <ItemGroup>
     <ClInclude Include="..\ImGuiUtils.h" />
   </ItemGroup>
-
   <!-- Pexip Pulse runtime, consumed as a NuGet PackageReference. Restored
        automatically on build by Visual Studio / msbuild from the in-repo feed
        declared in nuget.config (..\..\..\sdk\windows). No packages.config and
@@ -179,30 +161,24 @@
       <GeneratePathProperty>true</GeneratePathProperty>
     </PackageReference>
   </ItemGroup>
-
   <ItemGroup>
     <None Include="nuget.config" />
     <None Include="fetch-deps.ps1" />
+    <None Include="packages.config" />
     <None Include="README.md" />
   </ItemGroup>
-
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-
   <ImportGroup Label="ExtensionTargets" />
-
   <!-- One-step build: stage the third-party sources (ImGui / ImPlot / gl3w /
        ImGui-Addons / GLFW) on the first build by running fetch-deps.ps1, so a
        Windows dev can just open pexninja.sln and press Build/Run. Re-running is
        cheap (each dep is skipped if already present); the condition keeps the
        script from running at all once third_party\ is populated. The Pexip.Pulse
        NuGet is restored automatically via the PackageReference above. -->
-  <Target Name="FetchThirdPartyDeps" BeforeTargets="PrepareForBuild"
-          Condition="!Exists('$(ImguiDir)\imgui.cpp') Or !Exists('$(Gl3wDir)\src\gl3w.c') Or !Exists('$(GlfwDir)\lib-vc2022\glfw3.lib')">
+  <Target Name="FetchThirdPartyDeps" BeforeTargets="PrepareForBuild" Condition="!Exists('$(ImguiDir)\imgui.cpp') Or !Exists('$(Gl3wDir)\src\gl3w.c') Or !Exists('$(GlfwDir)\lib-vc2022\glfw3.lib')">
     <Message Importance="high" Text="pexninja: staging third-party dependencies (one-time) via fetch-deps.ps1 ..." />
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\fetch-deps.ps1&quot;"
-          WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\fetch-deps.ps1&quot;" WorkingDirectory="$(MSBuildProjectDirectory)" />
   </Target>
-
   <!-- Fail early with a helpful message if a dependency is still missing after
        the fetch/restore (e.g. fetch-deps.ps1 failed, or NuGet restore did not
        run), rather than with a wall of compiler/linker errors. Runs after
@@ -214,7 +190,6 @@
     <Error Condition="!Exists('$(Gl3wDir)\src\gl3w.c')" Text="gl3w has not been generated (needs python on PATH). Run 'powershell -ExecutionPolicy Bypass -File .\fetch-deps.ps1' manually and check its output." />
     <Error Condition="!Exists('$(GlfwDir)\lib-vc2022\glfw3.lib')" Text="GLFW prebuilt libs are missing. Run 'powershell -ExecutionPolicy Bypass -File .\fetch-deps.ps1' manually and check its output." />
   </Target>
-
   <!-- Copy the Pulse runtime assets (pexpulse.dll & friends + the ONNX models
        under share\models\…) next to the produced pexninja.exe. The managed
        windows demo gets this for free from the .NET SDK; a native build has to
@@ -227,5 +202,10 @@
     <Copy SourceFiles="@(PulseDlls)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(PulseModels)" DestinationFolder="$(OutDir)share\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
-
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('packages\Pexip.Pulse.1.0.17855-main\build\Pexip.Pulse.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Pexip.Pulse.1.0.17855-main\build\Pexip.Pulse.props'))" />
+  </Target>
 </Project>
