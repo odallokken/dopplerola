@@ -1,57 +1,54 @@
 // ============================================================================
-//  videowall - a multi-instance Pexip Pulse compositor
+//  videowall - a multi-instance Pexip Pulse compositor & production switcher
 // ----------------------------------------------------------------------------
 //
-//  Think of a huge screen in a control room - one superwide canvas (3480x1080
-//  by default) projected across several projectors. Onto that canvas we drop
-//  any number of *sources* and lay them out wherever we like:
+//  Think of a control-room production desk. You "prepare" a handful of *sources*
+//  - cameras, RTSP/RTMP feeds, still images, mp4 clips, and live Pexip
+//  video-conferences - and each one, once started, becomes an *active* source
+//  living in a little **library** down the left-hand rail (the way a hardware
+//  switcher keeps a stack of inputs).
 //
-//      * cameras            (local capture devices)
-//      * RTSP streams       (IP cameras, NVRs, ...)
-//      * RTMP streams       (OBS / ffmpeg publishers)
-//      * still images        (jpeg / png)
-//      * mp4 video files
-//      * Pexip video-conferences  (dial "name@server" and show the call)
+//  From that library you point-click-drag sources onto one or more **canvases**:
 //
-//  This is the same idea as the "compositor" mode inside pexninja, but with one
-//  crucial architectural difference:
+//      * the PROGRAM (wall) canvas  - the big superwide video wall;
+//      * one SEND canvas per dialled-in conference - exactly what *that* far end
+//        gets to see (so two different conferences can be shown two different
+//        things, all built from the same library);
+//      * an optional PRESENTATION canvas paired with each conference, lit up by a
+//        "Start presentation" button so the far end sees *both* streams.
 //
-//      pexninja  : ONE Pulse instance, every source becomes a video-mix input,
-//                  and Pulse's mixer composites them into a single frame.
+//  Two architectural ideas make this work, both inherited from the sibling demos:
 //
-//      videowall : ONE Pulse instance *per source*. Each source hides a whole
-//                  Pulse behind it. We never use Pulse's mixer to combine them
-//                  - instead each Pulse renders just its own source, we pull
-//                  that single frame out, and *we* paint it onto the canvas at
-//                  the requested location. The compositing happens in our own
-//                  OpenGL/ImGui draw list, not inside Pulse.
+//    1. ONE Pulse instance *per source* (like the original videowall / gateway).
+//       Each source hides a whole Pulse behind it; we pull its single frame out
+//       and composite everything ourselves - here on the CPU - rather than using
+//       Pulse's own mixer. The same active source can be dropped onto many
+//       canvases, and even twice onto the same canvas, because a *placement* is
+//       just a lightweight {source, x, y, w, h} record that references the source
+//       by id; the heavy media object is shared.
 //
-//  The per-source recipe (lifted from doppler / pexninja) is uniform:
+//    2. A video-conference is BOTH a source AND a sink. Its far-end video is
+//       pulled *out* and shown in the library like any other source (the
+//       inbound-pull path: pulse_data_session_connect_output +
+//       pulse_data_session_pull_frame_data). But it ALSO has an outbound canvas
+//       we composite and push back *in* - the mirror-image path
+//       (pulse_data_session_connect_input + pulse_data_session_push_frame),
+//       lifted from gateway. We render the SEND canvas to an RGBA buffer and push
+//       it as the conference's MAIN input; the PRESENTATION canvas, when active,
+//       is pushed on the PRESENTATION content slot.
 //
-//      1. pulse_new()                       -> a fresh Pulse just for this tile.
-//      2. NULL the window handles           -> we render the frames ourselves.
-//      3. Point the Pulse's *input* at the source:
-//           camera  -> pulse_device_session_connect_device
-//           rtsp    -> pulse_rtsp_session_connect_input + bind_to_content(MAIN)
-//           rtmp    -> pulse_rtmp_session_connect_input(MAIN)
-//           image   -> pulse_video_mix_input_from_file       -> mix onto MAIN
-//           mp4     -> pulse_video_mix_input_from_file_with_loop -> mix onto MAIN
-//      4. Pull the *self-view* back out with a data-session output and upload
-//         it to a GL texture. Self-view is Pulse's local preview of whatever
-//         is driving the MAIN input, so it works the same for every source
-//         kind above - exactly the "input in, self-view out" trick the brief
-//         asks for.
+//  The per-source *input* recipe is unchanged from the original videowall:
 //
-//  The one odd one out is the video-conference source. There the interesting
-//  picture is not our self-view but the *far end*, so instead of step 3/4 we:
+//      camera  -> pulse_device_session_connect_device
+//      rtsp    -> pulse_rtsp_session_connect_input + bind_to_content(MAIN)
+//      rtmp    -> pulse_rtmp_session_connect_input(MAIN)
+//      image   -> pulse_video_mix_input_from_file        -> mix onto MAIN
+//      mp4     -> pulse_video_mix_input_from_file_with_loop -> mix onto MAIN
+//      conf    -> pulse_connect_with_rest_async, render MAIN (the far end)
 //
-//      3'. split "havard@pexipdemo.com" into conference="havard" and
-//          server="pexipdemo.com", then pulse_connect_with_rest_async().
-//      4'. pull the MAIN (incoming) video out with a data-session output.
-//
-//  Everything else here is Dear ImGui plumbing: a sources rail on the left to
-//  add / configure / remove sources, and a scaled view of the canvas on the
-//  right where you can drag the tiles around.
+//  Everything else is Dear ImGui plumbing: a library rail on the left (prepare /
+//  list / drag / stop sources) and a tabbed, switcher-style canvas area on the
+//  right (Program wall + one tab per conference with its Send/Presentation buses).
 // ============================================================================
 
 #include <atomic>
@@ -60,7 +57,6 @@
 #include <cstring>
 #include <algorithm>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -93,22 +89,79 @@ static const char * kSourceKindLabels[] = {
 };
 
 // ----------------------------------------------------------------------------
-//  A single tile on the wall
+//  A small CPU-side RGBA image - the freshest frame for a source, and the
+//  scratch buffers we composite outbound canvases into. Compositing happens on
+//  the CPU (not via Pulse's mixer or a GL FBO) to keep the demo dependency-free
+//  and the data path obvious: pull RGBA out, paint it into a bigger RGBA buffer,
+//  push that buffer back in.
+// ----------------------------------------------------------------------------
+
+struct RgbaImage
+{
+    std::vector<uint8_t> px;   // tightly packed RGBA, row-major, top-down
+    int w = 0;
+    int h = 0;
+};
+
+// ----------------------------------------------------------------------------
+//  Outbound sink - the "send side" of a conference source
 // ----------------------------------------------------------------------------
 //
-//  Each Source owns its own Pulse instance and the GL texture we paint onto the
-//  canvas. The config fields are kept as fixed-size buffers because that is
-//  what ImGui's InputText API wants.
+//  Only conference sources own one of these. It holds the two canvases we
+//  compose for that far end (the main SEND bus and the optional PRESENTATION
+//  bus), the input data-sessions we push them into, and a little bookkeeping so
+//  we only re-describe the format to Pulse when the canvas size changes.
 // ----------------------------------------------------------------------------
 
-struct Source
+struct Placement;  // fwd
+
+struct Canvas
 {
+    std::string name;
+    int  w = 1280;
+    int  h = 720;
+    std::vector<Placement> items;  // back of the vector == top of the z-order
+    int  selected = -1;            // index into items, or -1
+};
+
+struct OutboundSink
+{
+    Canvas send;          // pushed to the conference MAIN input (what they see)
+    Canvas presentation;  // pushed to the PRESENTATION input when active
+
+    bool present_active = false;  // is the presentation bus being sent?
+
+    bool main_input_open = false;
+    bool pres_input_open = false;
+
+    // The last dimensions we described to Pulse, per slot. When the canvas is
+    // resized we attach a fresh update_config on the next pushed frame.
+    int last_main_w = 0, last_main_h = 0;
+    int last_pres_w = 0, last_pres_h = 0;
+
+    // Scratch buffers reused every frame so we are not reallocating ~3.5 MB a
+    // tick. Composited from the library, then pushed.
+    RgbaImage main_buf;
+    RgbaImage pres_buf;
+
+    double last_push_time = 0.0;  // simple FPS throttle for the push path
+};
+
+// ----------------------------------------------------------------------------
+//  An active source in the library
+// ----------------------------------------------------------------------------
+//
+//  This is what the original demo called `Source`, minus the placement: a live
+//  media object plus the Pulse instance behind it and the GL texture / CPU frame
+//  we paint from. Placement now lives separately (see Placement) so the same
+//  source can appear on many canvases.
+// ----------------------------------------------------------------------------
+
+struct ActiveSource
+{
+    int        id   = 0;            // stable identity; placements reference this
     SourceKind kind = SourceKind::Camera;
     char       name[64] = "Source";
-
-    // ---- placement on the canvas, in canvas pixels --------------------------
-    float x = 0.0f, y = 0.0f;       // top-left corner
-    float w = 640.0f, h = 360.0f;   // size
 
     // ---- per-kind configuration --------------------------------------------
     char camera_name[128] = "";     // empty => system default / first camera
@@ -138,28 +191,46 @@ struct Source
     // Live conference status (written from a Pulse callback thread).
     std::atomic<int> conn_status{PULSE_CONNECTION_STATUS_DISCONNECTED};
 
+    // Conference sources additionally own an outbound sink (the send side).
+    std::unique_ptr<OutboundSink> sink;
+
     // ---- rendering ----------------------------------------------------------
-    GLuint texture  = 0;
-    int    tex_w    = 0;
-    int    tex_h    = 0;
+    GLuint    texture = 0;          // the inbound frame, for on-screen thumbnails
+    int       tex_w   = 0;
+    int       tex_h   = 0;
+    RgbaImage frame_cpu;            // same frame kept CPU-side for compositing
+};
+
+// ----------------------------------------------------------------------------
+//  A placement - one appearance of a library source on a canvas
+// ----------------------------------------------------------------------------
+
+struct Placement
+{
+    int   source_id = 0;            // which ActiveSource (by id)
+    float x = 0.0f, y = 0.0f;       // top-left corner, in canvas pixels
+    float w = 480.0f, h = 270.0f;   // size, in canvas pixels
 };
 
 struct AppState
 {
-    // The virtual canvas. Superwide by default - a control-room video wall.
-    int canvas_w = 3480;
-    int canvas_h = 1080;
+    // The library of prepared, live sources.
+    std::vector<std::unique_ptr<ActiveSource>> library;
+    int next_source_id = 1;
+    int selected_source = -1;       // id of the library source shown in the inspector
 
-    std::vector<std::unique_ptr<Source>> sources;
-    int selected = -1;  // index into sources, or -1
+    // The PROGRAM (wall) canvas - superwide by default, a control-room wall.
+    Canvas program{ "Program (Wall)", 3480, 1080, {}, -1 };
 
     // A long-lived Pulse instance used only to enumerate capture devices so the
     // "Camera" dropdown has something to show before a source is started.
     Pulse * enum_pulse = nullptr;
     std::vector<std::string> camera_names;
 
-    // The "+ Add source" form lives here so it survives across frames.
-    int add_kind = 0;
+    // The "Prepare source" staging form. We configure a source here, then
+    // "Prepare" starts it and (on success) moves it into the library.
+    ActiveSource staging;
+    int          staging_kind = 0;
 };
 
 // ----------------------------------------------------------------------------
@@ -176,18 +247,18 @@ static void on_pulse_log(void * /*uc*/, PulseDebugLevel level, const char * cate
 }
 
 // ----------------------------------------------------------------------------
-//  Conference callbacks (one Source* per conference tile)
+//  Conference callbacks (one ActiveSource* per conference tile)
 // ----------------------------------------------------------------------------
 
 static void on_conf_status(const PulseConferenceStatusInfo * info, void * uc)
 {
-    auto * src = static_cast<Source *>(uc);
+    auto * src = static_cast<ActiveSource *>(uc);
     src->conn_status.store(static_cast<int>(info->status));
 }
 
 static void on_conf_result(const PulseError err, void * uc)
 {
-    auto * src = static_cast<Source *>(uc);
+    auto * src = static_cast<ActiveSource *>(uc);
     if (err != PULSE_SUCCESS)
         src->last_error = std::string("conference connect failed: ") + pulse_strerror(err);
 }
@@ -198,23 +269,40 @@ static void on_conf_progress(const PulseOperationProgressInfo * /*info*/, void *
 }
 
 // ----------------------------------------------------------------------------
-//  Video rendering helpers (data session -> GL texture). Copied from doppler.
+//  Video rendering helpers (data session <-> RGBA). Pull side from doppler,
+//  push side from gateway.
 // ----------------------------------------------------------------------------
 
-static PulseDataSessionConfig * make_video_data_session_config()
+static PulseDataSessionConfig * make_video_output_config()
 {
+    // The OUTPUT (pull) side just wants already-decoded RGBA frames; caps are
+    // enough and Pulse fills in the real dimensions on every pulled frame.
     PulseDataSessionConfig * cfg =
         pulse_data_session_config_new(PULSE_DATA_SESSION_VIDEO_FROM_CAPS);
     pulse_data_session_config_video_from_caps(cfg, "video/x-raw, format=RGBA");
     return cfg;
 }
 
-// Pull the freshest RGBA frame Pulse has for `render_content` and upload it to
-// the source's GL texture. Non-blocking (timeout 0); a no-op when nothing is
-// ready yet.
-static void pump_frame_into_texture(Source & src)
+static PulseDataSessionConfig * make_rgba_input_config(int w, int h)
 {
-    if (!src.pulse || !src.texture) return;
+    // The INPUT (push) side is configured with VIDEO_FROM_VALUES so we can keep
+    // Pulse in sync with the canvas resolution: PulseDataSessionFrameData itself
+    // only carries data + size, so the dimensions have to ride on the config
+    // (at connect time, and again via update_config whenever they change).
+    PulseDataSessionConfig * cfg =
+        pulse_data_session_config_new(PULSE_DATA_SESSION_VIDEO_FROM_VALUES);
+    PulseDimensions dims{ static_cast<uint32_t>(w), static_cast<uint32_t>(h) };
+    PulseFramerate  fps{ 30, 1 };
+    pulse_data_session_config_video_from_values(cfg, PULSE_MEDIA_PIXEL_FORMAT_RGBA, dims, fps);
+    return cfg;
+}
+
+// Pull the freshest RGBA frame Pulse has for `render_content` and upload it to
+// the source's GL texture (for thumbnails) while keeping a CPU copy (for
+// outbound compositing). Non-blocking; a no-op when nothing is ready yet.
+static void pump_frame(ActiveSource & src)
+{
+    if (!src.pulse) return;
 
     PulseDataSessionFrameData * frame = nullptr;
     pulse_data_session_pull_frame_data(src.pulse, PULSE_MEDIA_VIDEO, &frame,
@@ -222,14 +310,103 @@ static void pump_frame_into_texture(Source & src)
     if (!frame) return;
 
     int w = 0, h = 0;
-    if (pulse_frame_data_get_resolution(frame, &w, &h) && w > 0 && h > 0) {
-        glBindTexture(GL_TEXTURE_2D, src.texture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, frame->data);
-        src.tex_w = w;
-        src.tex_h = h;
+    if (pulse_frame_data_get_resolution(frame, &w, &h) && w > 0 && h > 0 && frame->data) {
+        // Keep a CPU copy for the compositor.
+        src.frame_cpu.w = w;
+        src.frame_cpu.h = h;
+        src.frame_cpu.px.assign(frame->data,
+                                frame->data + static_cast<size_t>(w) * h * 4);
+
+        // And upload to the GL texture for thumbnails / canvas previews.
+        if (src.texture) {
+            glBindTexture(GL_TEXTURE_2D, src.texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, frame->data);
+            src.tex_w = w;
+            src.tex_h = h;
+        }
     }
     pulse_data_session_frame_data_free(frame);
+}
+
+// ----------------------------------------------------------------------------
+//  CPU compositor
+// ----------------------------------------------------------------------------
+
+static ActiveSource * find_source(AppState & app, int id)
+{
+    for (auto & s : app.library)
+        if (s->id == id) return s.get();
+    return nullptr;
+}
+
+// Nearest-neighbour blit of a source frame into a destination region, clipped to
+// the destination bounds. Opaque overwrite - good enough for a demo wall.
+static void blit_scaled(RgbaImage & dst, const RgbaImage & src,
+                        int dx, int dy, int dw, int dh)
+{
+    if (src.w <= 0 || src.h <= 0 || dw <= 0 || dh <= 0) return;
+
+    for (int yy = 0; yy < dh; ++yy) {
+        const int ty = dy + yy;
+        if (ty < 0 || ty >= dst.h) continue;
+        int sy = static_cast<int>(static_cast<int64_t>(yy) * src.h / dh);
+        if (sy >= src.h) sy = src.h - 1;
+
+        for (int xx = 0; xx < dw; ++xx) {
+            const int tx = dx + xx;
+            if (tx < 0 || tx >= dst.w) continue;
+            int sx = static_cast<int>(static_cast<int64_t>(xx) * src.w / dw);
+            if (sx >= src.w) sx = src.w - 1;
+
+            const uint8_t * s = &src.px[(static_cast<size_t>(sy) * src.w + sx) * 4];
+            uint8_t *       d = &dst.px[(static_cast<size_t>(ty) * dst.w + tx) * 4];
+            d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = 255;
+        }
+    }
+}
+
+// Paint every placement of a canvas into `out` (resized to the canvas), bottom
+// of the z-order first.
+static void composite_canvas(AppState & app, const Canvas & canvas, RgbaImage & out)
+{
+    out.w = canvas.w;
+    out.h = canvas.h;
+    out.px.assign(static_cast<size_t>(canvas.w) * canvas.h * 4, 0);
+    // Opaque dark backdrop.
+    for (size_t i = 0; i < out.px.size(); i += 4) {
+        out.px[i + 0] = 16; out.px[i + 1] = 16; out.px[i + 2] = 20; out.px[i + 3] = 255;
+    }
+
+    for (const Placement & p : canvas.items) {
+        ActiveSource * s = find_source(app, p.source_id);
+        if (!s || s->frame_cpu.w <= 0) continue;
+        blit_scaled(out, s->frame_cpu,
+                    static_cast<int>(p.x), static_cast<int>(p.y),
+                    static_cast<int>(p.w), static_cast<int>(p.h));
+    }
+}
+
+// Push one composited buffer into a conference input slot, re-describing the
+// resolution only when it changes.
+static void push_canvas(ActiveSource & conf, PulseMediaContent slot, RgbaImage & img,
+                        int & last_w, int & last_h)
+{
+    if (!conf.pulse || img.w <= 0 || img.h <= 0) return;
+
+    PulseDataSessionFrame frame{};
+    PulseDataSessionConfig * upd = nullptr;
+    if (img.w != last_w || img.h != last_h) {
+        upd = make_rgba_input_config(img.w, img.h);
+        frame.update_config = upd;
+        last_w = img.w;
+        last_h = img.h;
+    }
+    frame.video.data      = img.px.data();
+    frame.video.data_size = static_cast<int>(img.px.size());
+
+    pulse_data_session_push_frame(conf.pulse, &frame, slot);
+    if (upd) pulse_data_session_config_free(upd);
 }
 
 // ----------------------------------------------------------------------------
@@ -255,7 +432,7 @@ static void refresh_camera_list(AppState & app)
 
 // Bind a camera (by name, falling back to the system default / first one) to a
 // source's own Pulse instance as the MAIN video input.
-static PulseError connect_camera(Source & src)
+static PulseError connect_camera(ActiveSource & src)
 {
     PulseDeviceIterator * it = nullptr;
     pulse_device_iterator_new(src.pulse, PULSE_MEDIA_VIDEO, PULSE_MEDIA_INPUT, &it);
@@ -288,7 +465,7 @@ static PulseError connect_camera(Source & src)
 // Acquire a still image / mp4 as a video-mix input and connect a one-input mix
 // onto MAIN, so the source's self-view previews it. Returns the input id (which
 // must be released on stop) via src.mix_input.
-static PulseError connect_file_via_mix(Source & src, bool loop)
+static PulseError connect_file_via_mix(ActiveSource & src, bool loop)
 {
     PulseVideoMixInputID id = PULSE_VIDEO_MIX_INPUT_ID_NONE;
     PulseError err = loop
@@ -332,12 +509,11 @@ static bool split_conference_id(const char * id, std::string & conference, std::
 //  Source lifecycle
 // ----------------------------------------------------------------------------
 
-static void stop_source(Source & src);  // fwd
+static void stop_source(ActiveSource & src);  // fwd
 
 // Spin up the Pulse instance behind a source and point its input at the chosen
-// source (or, for a conference, dial the call). Idempotent: calling start on an
-// already-started source is a no-op.
-static void start_source(Source & src)
+// source (or, for a conference, dial the call). Idempotent.
+static void start_source(ActiveSource & src)
 {
     if (src.started) return;
     src.last_error.clear();
@@ -353,7 +529,7 @@ static void start_source(Source & src)
     pulse_options_set_self_view_window_handle(src.pulse, nullptr);
     pulse_options_set_remote_video_window_handle(src.pulse, nullptr);
     pulse_options_set_presentation_video_window_handle(src.pulse, nullptr);
-    pulse_options_set_application_user_agent_string(src.pulse, "videowall/0.1");
+    pulse_options_set_application_user_agent_string(src.pulse, "videowall/0.2");
 
     PulseError err = PULSE_SUCCESS;
 
@@ -374,7 +550,6 @@ static void start_source(Source & src)
             err = pulse_rtsp_session_connect_input(src.pulse, &cfg, &session);
             if (err == PULSE_SUCCESS) {
                 src.rtsp_session = session;
-                // Publish the camera's streams onto MAIN so self-view previews it.
                 err = pulse_rtsp_session_bind_to_content(src.pulse, session,
                                                          PULSE_MEDIA_CONTENT_MAIN);
             }
@@ -389,8 +564,6 @@ static void start_source(Source & src)
             cfg.use_tls        = false;
             cfg.support_audio  = true;
             cfg.support_video  = true;
-            // Each RTMP source owns its own listener (its own port), so unlike
-            // pexninja there is no shared-listener contention to manage.
             err = pulse_rtmp_session_connect_input(src.pulse, PULSE_MEDIA_CONTENT_MAIN, &cfg);
             if (err == PULSE_SUCCESS) src.rtmp_listening = true;
             break;
@@ -429,6 +602,30 @@ static void start_source(Source & src)
             PulseAsyncOperationResultCallbackConfig result_cb{ on_conf_result, &src };
             PulseOperationProgressCallbackConfig    progress_cb{ on_conf_progress, &src };
             err = pulse_connect_with_rest_async(src.pulse, &cfg, &result_cb, &progress_cb);
+
+            // Stand up this conference's outbound sink: the SEND bus (pushed to
+            // MAIN) and a PRESENTATION bus, plus their canvases. We open the
+            // MAIN input session now so the moment a frame is composited we can
+            // push it; PRESENTATION is opened lazily by "Start presentation".
+            if (err == PULSE_SUCCESS) {
+                src.sink = std::make_unique<OutboundSink>();
+                src.sink->send.name         = "Send";
+                src.sink->send.w            = 1280;
+                src.sink->send.h            = 720;
+                src.sink->presentation.name = "Presentation";
+                src.sink->presentation.w    = 1280;
+                src.sink->presentation.h    = 720;
+
+                PulseDataSessionConfig * icfg =
+                    make_rgba_input_config(src.sink->send.w, src.sink->send.h);
+                if (pulse_data_session_connect_input(src.pulse, icfg,
+                                                     PULSE_MEDIA_CONTENT_MAIN) == PULSE_SUCCESS) {
+                    src.sink->main_input_open = true;
+                    src.sink->last_main_w = src.sink->send.w;
+                    src.sink->last_main_h = src.sink->send.h;
+                }
+                pulse_data_session_config_free(icfg);
+            }
             break;
         }
     }
@@ -447,7 +644,7 @@ static void start_source(Source & src)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-    PulseDataSessionConfig * dcfg = make_video_data_session_config();
+    PulseDataSessionConfig * dcfg = make_video_output_config();
     pulse_data_session_connect_output(src.pulse, dcfg, src.render_content);
     pulse_data_session_config_free(dcfg);
 
@@ -456,7 +653,7 @@ static void start_source(Source & src)
 
 // Tear a source's Pulse instance down and free every resource it acquired.
 // Safe to call on a never-started or half-started source.
-static void stop_source(Source & src)
+static void stop_source(ActiveSource & src)
 {
     if (!src.pulse) {
         src.started = false;
@@ -493,6 +690,18 @@ static void stop_source(Source & src)
             }
             break;
         case SourceKind::Conference:
+            // Tear down the outbound (send / presentation) input sessions first.
+            if (src.sink) {
+                if (src.sink->pres_input_open)
+                    pulse_data_session_disconnect(src.pulse, PULSE_MEDIA_VIDEO,
+                                                  PULSE_MEDIA_INPUT,
+                                                  PULSE_MEDIA_CONTENT_PRESENTATION);
+                if (src.sink->main_input_open)
+                    pulse_data_session_disconnect(src.pulse, PULSE_MEDIA_VIDEO,
+                                                  PULSE_MEDIA_INPUT,
+                                                  PULSE_MEDIA_CONTENT_MAIN);
+                src.sink.reset();
+            }
             pulse_options_set_conference_state_callback(src.pulse, nullptr);
             if (pulse_is_connected(src.pulse))
                 pulse_disconnect(src.pulse, nullptr);
@@ -507,118 +716,112 @@ static void stop_source(Source & src)
         src.texture = 0;
     }
     src.tex_w = src.tex_h = 0;
+    src.frame_cpu = RgbaImage{};
     src.conn_status.store(PULSE_CONNECTION_STATUS_DISCONNECTED);
     src.started = false;
 }
 
-// ----------------------------------------------------------------------------
-//  Canvas rendering
-// ----------------------------------------------------------------------------
-//
-//  We draw a scaled-down view of the whole canvas inside an ImGui child window,
-//  paint each source's texture at its (scaled) placement, and let the user drag
-//  tiles around. The scale factor maps canvas pixels onto screen pixels.
-// ----------------------------------------------------------------------------
-
-static void draw_canvas(AppState & app)
+// Remove every placement that references `id` from a canvas.
+static void prune_placements(Canvas & c, int id)
 {
-    ImGui::BeginChild("canvas", ImVec2(0, 0), true,
-                      ImGuiWindowFlags_HorizontalScrollbar);
+    c.items.erase(std::remove_if(c.items.begin(), c.items.end(),
+                                 [&](const Placement & p) { return p.source_id == id; }),
+                  c.items.end());
+    c.selected = -1;
+}
 
-    const float avail_w = ImGui::GetContentRegionAvail().x;
-    const float scale   = (app.canvas_w > 0) ? (avail_w / static_cast<float>(app.canvas_w)) : 1.0f;
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
-    const ImVec2 canvas_px(app.canvas_w * scale, app.canvas_h * scale);
-
-    ImDrawList * dl = ImGui::GetWindowDrawList();
-
-    // The canvas backdrop.
-    dl->AddRectFilled(origin, ImVec2(origin.x + canvas_px.x, origin.y + canvas_px.y),
-                      IM_COL32(20, 20, 24, 255));
-    dl->AddRect(origin, ImVec2(origin.x + canvas_px.x, origin.y + canvas_px.y),
-                IM_COL32(90, 90, 110, 255));
-
-    // Reserve the canvas area so the child scrolls correctly.
-    ImGui::Dummy(canvas_px);
-
-    auto to_screen = [&](float cx, float cy) {
-        return ImVec2(origin.x + cx * scale, origin.y + cy * scale);
-    };
-
-    for (int i = 0; i < static_cast<int>(app.sources.size()); ++i) {
-        Source & src = *app.sources[i];
-
-        pump_frame_into_texture(src);
-
-        const ImVec2 tl = to_screen(src.x, src.y);
-        const ImVec2 br = to_screen(src.x + src.w, src.y + src.h);
-
-        if (src.texture && src.tex_w > 0 && src.tex_h > 0) {
-            dl->AddImage((ImTextureID)(uintptr_t)src.texture, tl, br);
-        } else {
-            dl->AddRectFilled(tl, br, IM_COL32(40, 40, 48, 255));
+// Stop a library source and erase it, first pruning its placements from every
+// canvas (program plus every conference's send / presentation buses).
+static void remove_source(AppState & app, int id)
+{
+    for (auto & s : app.library) {
+        prune_placements(app.program, id);
+        if (s->sink) {
+            prune_placements(s->sink->send, id);
+            prune_placements(s->sink->presentation, id);
         }
-
-        const bool selected = (i == app.selected);
-        dl->AddRect(tl, br, selected ? IM_COL32(80, 180, 250, 255) : IM_COL32(120, 120, 140, 255),
-                    0.0f, 0, selected ? 2.0f : 1.0f);
-
-        // A little caption.
-        dl->AddText(ImVec2(tl.x + 4, tl.y + 4), IM_COL32(230, 230, 230, 255), src.name);
-
-        // Hit-test / drag handling: an invisible button over the tile lets us
-        // select it and drag it around. Later tiles sit on top, matching the
-        // draw order, so the topmost tile wins the click.
-        ImGui::SetCursorScreenPos(tl);
-        ImGui::PushID(i);
-        ImGui::InvisibleButton("tile", ImVec2(std::max(br.x - tl.x, 1.0f),
-                                              std::max(br.y - tl.y, 1.0f)));
-        if (ImGui::IsItemActivated()) app.selected = i;
-        if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-            const ImVec2 d = ImGui::GetIO().MouseDelta;
-            src.x += d.x / scale;
-            src.y += d.y / scale;
-            // Keep the tile from wandering entirely off the canvas.
-            if (src.x < 0) src.x = 0;
-            if (src.y < 0) src.y = 0;
-            if (src.x > app.canvas_w - 1) src.x = static_cast<float>(app.canvas_w - 1);
-            if (src.y > app.canvas_h - 1) src.y = static_cast<float>(app.canvas_h - 1);
-        }
-        ImGui::PopID();
     }
 
-    ImGui::EndChild();
+    auto it = std::find_if(app.library.begin(), app.library.end(),
+                           [&](const std::unique_ptr<ActiveSource> & s) { return s->id == id; });
+    if (it == app.library.end()) return;
+
+    stop_source(**it);
+    app.library.erase(it);
+    if (app.selected_source == id) app.selected_source = -1;
 }
 
 // ----------------------------------------------------------------------------
-//  Per-kind configuration UI
+//  Outbound push - composite each conference's buses and push them in
 // ----------------------------------------------------------------------------
 
-static const char * status_to_string(int status)
+static void pump_outbound(AppState & app)
 {
-    switch (status) {
-        case PULSE_CONNECTION_STATUS_DISCONNECTED:  return "Disconnected";
-        case PULSE_CONNECTION_STATUS_CONNECTING:    return "Connecting...";
-        case PULSE_CONNECTION_STATUS_RECONNECTING:  return "Reconnecting...";
-        case PULSE_CONNECTION_STATUS_CONNECTED:     return "Connected";
-        case PULSE_CONNECTION_STATUS_DISCONNECTING: return "Disconnecting...";
-        default:                                    return "Unknown";
+    const double now = glfwGetTime();
+    const double interval = 1.0 / 30.0;   // throttle the push path to ~30 fps
+
+    for (auto & s : app.library) {
+        if (s->kind != SourceKind::Conference || !s->sink || !s->started) continue;
+        OutboundSink & sink = *s->sink;
+
+        if (now - sink.last_push_time < interval) continue;
+        sink.last_push_time = now;
+
+        // The SEND bus -> MAIN input (what the far end sees instead of a camera).
+        if (sink.main_input_open) {
+            composite_canvas(app, sink.send, sink.main_buf);
+            push_canvas(*s, PULSE_MEDIA_CONTENT_MAIN, sink.main_buf,
+                        sink.last_main_w, sink.last_main_h);
+        }
+
+        // The PRESENTATION bus -> PRESENTATION input, only while it is "started".
+        if (sink.present_active && sink.pres_input_open) {
+            composite_canvas(app, sink.presentation, sink.pres_buf);
+            push_canvas(*s, PULSE_MEDIA_CONTENT_PRESENTATION, sink.pres_buf,
+                        sink.last_pres_w, sink.last_pres_h);
+        }
     }
 }
 
-// Draw the editable fields for whichever source is selected.
-static void draw_source_config(AppState & app, Source & src)
+// Start / stop sending the presentation bus for a conference.
+static void start_presentation(ActiveSource & conf)
 {
-    ImGui::SeparatorText("Selected source");
-    ImGui::InputText("Name", src.name, sizeof(src.name));
-    ImGui::Text("Kind: %s", kSourceKindLabels[static_cast<int>(src.kind)]);
+    if (!conf.sink || conf.sink->present_active) return;
+    PulseDataSessionConfig * icfg =
+        make_rgba_input_config(conf.sink->presentation.w, conf.sink->presentation.h);
+    PulseError err = pulse_data_session_connect_input(conf.pulse, icfg,
+                                                      PULSE_MEDIA_CONTENT_PRESENTATION);
+    pulse_data_session_config_free(icfg);
+    if (err != PULSE_SUCCESS) {
+        conf.last_error = std::string("start presentation failed: ") + pulse_strerror(err);
+        return;
+    }
+    conf.sink->pres_input_open = true;
+    conf.sink->present_active  = true;
+    conf.sink->last_pres_w = conf.sink->presentation.w;
+    conf.sink->last_pres_h = conf.sink->presentation.h;
+}
 
-    // Editing the wiring after start would desync Pulse, so lock the source-
-    // specific fields while it is running.
-    ImGui::BeginDisabled(src.started);
+static void stop_presentation(ActiveSource & conf)
+{
+    if (!conf.sink || !conf.sink->present_active) return;
+    if (conf.sink->pres_input_open) {
+        pulse_data_session_disconnect(conf.pulse, PULSE_MEDIA_VIDEO, PULSE_MEDIA_INPUT,
+                                      PULSE_MEDIA_CONTENT_PRESENTATION);
+        conf.sink->pres_input_open = false;
+    }
+    conf.sink->present_active = false;
+}
+
+// ----------------------------------------------------------------------------
+//  Per-kind configuration UI (shared by the staging form and the library
+//  inspector). Draws only the kind-specific fields.
+// ----------------------------------------------------------------------------
+
+static void draw_kind_config(AppState & app, ActiveSource & src)
+{
     switch (src.kind) {
         case SourceKind::Camera: {
-            // Build a combo of camera names plus a "(default)" entry.
             std::string current = src.camera_name[0] ? src.camera_name : "(system default)";
             if (ImGui::BeginCombo("Camera", current.c_str())) {
                 if (ImGui::Selectable("(system default)", src.camera_name[0] == '\0'))
@@ -654,80 +857,316 @@ static void draw_source_config(AppState & app, Source & src)
             ImGui::TextWrapped("e.g. havard@pexipdemo.com -> conference \"havard\" on \"pexipdemo.com\"");
             break;
     }
-    ImGui::EndDisabled();
+}
 
-    ImGui::Spacing();
-    ImGui::DragFloat2("Position (px)", &src.x, 1.0f);
-    ImGui::DragFloat2("Size (px)", &src.w, 1.0f, 16.0f, 100000.0f);
-
-    ImGui::Spacing();
-    if (!src.started) {
-        if (ImGui::Button("Start")) start_source(src);
-    } else {
-        if (ImGui::Button("Stop")) stop_source(src);
-        if (src.kind == SourceKind::Conference) {
-            ImGui::SameLine();
-            ImGui::Text("[%s]", status_to_string(src.conn_status.load()));
-        }
-    }
-    if (!src.last_error.empty()) {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", src.last_error.c_str());
+static const char * status_to_string(int status)
+{
+    switch (status) {
+        case PULSE_CONNECTION_STATUS_DISCONNECTED:  return "Disconnected";
+        case PULSE_CONNECTION_STATUS_CONNECTING:    return "Connecting...";
+        case PULSE_CONNECTION_STATUS_RECONNECTING:  return "Reconnecting...";
+        case PULSE_CONNECTION_STATUS_CONNECTED:     return "Connected";
+        case PULSE_CONNECTION_STATUS_DISCONNECTING: return "Disconnecting...";
+        default:                                    return "Unknown";
     }
 }
 
 // ----------------------------------------------------------------------------
-//  Sources rail (add / list / remove)
+//  Library rail (prepare / list / drag / stop sources)
 // ----------------------------------------------------------------------------
 
-static void draw_sources_rail(AppState & app)
-{
-    ImGui::SeparatorText("Canvas");
-    ImGui::InputInt("Width",  &app.canvas_w);
-    ImGui::InputInt("Height", &app.canvas_h);
-    if (app.canvas_w < 16)  app.canvas_w = 16;
-    if (app.canvas_h < 16)  app.canvas_h = 16;
+// The drag-drop payload type carried from a library thumbnail to a canvas.
+static const char * kSourcePayload = "WALL_SRC";
 
-    ImGui::SeparatorText("Add source");
-    ImGui::Combo("##addkind", &app.add_kind, kSourceKindLabels,
-                 IM_ARRAYSIZE(kSourceKindLabels));
-    ImGui::SameLine();
-    if (ImGui::Button("+ Add")) {
-        auto src = std::make_unique<Source>();
-        src->kind = static_cast<SourceKind>(app.add_kind);
-        std::snprintf(src->name, sizeof(src->name), "%s %d",
-                      kSourceKindLabels[app.add_kind],
-                      static_cast<int>(app.sources.size()) + 1);
-        // Stagger new tiles so they don't all land on top of each other.
-        const int n = static_cast<int>(app.sources.size());
-        src->x = static_cast<float>((n % 4) * 660);
-        src->y = static_cast<float>((n / 4) * 380);
-        app.sources.push_back(std::move(src));
-        app.selected = static_cast<int>(app.sources.size()) - 1;
+static void draw_library_rail(AppState & app)
+{
+    // ---- Prepare a source (the staging form) -------------------------------
+    ImGui::SeparatorText("Prepare a source");
+    if (ImGui::Combo("Kind", &app.staging_kind, kSourceKindLabels,
+                     IM_ARRAYSIZE(kSourceKindLabels))) {
+        app.staging.kind = static_cast<SourceKind>(app.staging_kind);
+    }
+    app.staging.kind = static_cast<SourceKind>(app.staging_kind);
+    ImGui::InputText("Name", app.staging.name, sizeof(app.staging.name));
+    draw_kind_config(app, app.staging);
+
+    if (ImGui::Button("Prepare (start)")) {
+        // Move the staging config into a fresh library entry and start it. Only
+        // sources that come up successfully join the library.
+        auto src = std::make_unique<ActiveSource>();
+        ActiveSource & s = *src;
+        s.kind = app.staging.kind;
+        std::snprintf(s.name, sizeof(s.name), "%s", app.staging.name);
+        std::memcpy(s.camera_name,   app.staging.camera_name,   sizeof(s.camera_name));
+        std::memcpy(s.file_path,     app.staging.file_path,     sizeof(s.file_path));
+        std::memcpy(s.rtsp_url,      app.staging.rtsp_url,      sizeof(s.rtsp_url));
+        s.rtmp_port = app.staging.rtmp_port;
+        std::memcpy(s.rtmp_path,     app.staging.rtmp_path,     sizeof(s.rtmp_path));
+        std::memcpy(s.conference_id, app.staging.conference_id, sizeof(s.conference_id));
+        std::memcpy(s.display_name,  app.staging.display_name,  sizeof(s.display_name));
+        s.loop = app.staging.loop;
+        s.id   = app.next_source_id++;
+
+        start_source(s);
+        if (s.started) {
+            app.selected_source = s.id;
+            app.library.push_back(std::move(src));
+        } else {
+            app.staging.last_error = s.last_error;
+        }
+    }
+    if (!app.staging.last_error.empty())
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", app.staging.last_error.c_str());
+
+    // ---- The library of active sources (drag onto any canvas) --------------
+    ImGui::SeparatorText("Library (drag onto a canvas)");
+    const float thumb_w = 110.0f, thumb_h = 62.0f;
+    const float avail   = ImGui::GetContentRegionAvail().x;
+    int per_row = std::max(1, static_cast<int>(avail / (thumb_w + 8.0f)));
+    int col = 0;
+
+    for (auto & up : app.library) {
+        ActiveSource & s = *up;
+        ImGui::PushID(s.id);
+
+        // A live thumbnail doubling as the drag handle and selection toggle.
+        ImVec2 size(thumb_w, thumb_h);
+        bool clicked;
+        if (s.texture && s.tex_w > 0) {
+            clicked = ImGui::ImageButton("thumb", (ImTextureID)(uintptr_t)s.texture, size,
+                                         ImVec2(0, 0), ImVec2(1, 1));
+        } else {
+            clicked = ImGui::Button("(no signal)", size);
+        }
+        if (clicked) app.selected_source = s.id;
+
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+            ImGui::SetDragDropPayload(kSourcePayload, &s.id, sizeof(int));
+            ImGui::Text("%s", s.name);
+            ImGui::EndDragDropSource();
+        }
+
+        // Caption + status badge underneath the thumbnail.
+        ImGui::TextUnformatted(s.name);
+        if (s.kind == SourceKind::Conference)
+            ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "%s",
+                               status_to_string(s.conn_status.load()));
+        else
+            ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "%s",
+                               kSourceKindLabels[static_cast<int>(s.kind)]);
+
+        ImGui::PopID();
+        if (++col % per_row != 0) ImGui::SameLine();
+    }
+    if (col % per_row != 0) ImGui::NewLine();
+
+    // ---- Inspector for the selected library source -------------------------
+    ActiveSource * sel = (app.selected_source >= 0) ? find_source(app, app.selected_source) : nullptr;
+    if (sel) {
+        ImGui::SeparatorText("Selected source");
+        ImGui::Text("%s  -  %s", sel->name, kSourceKindLabels[static_cast<int>(sel->kind)]);
+        ImGui::BeginDisabled(true);
+        draw_kind_config(app, *sel);
+        ImGui::EndDisabled();
+        if (!sel->last_error.empty())
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", sel->last_error.c_str());
+        if (ImGui::Button("Stop & remove from library"))
+            remove_source(app, sel->id);
+    }
+}
+
+// ----------------------------------------------------------------------------
+//  Canvas editing (shared by the Program wall and the conference buses)
+// ----------------------------------------------------------------------------
+//
+//  Draws a scaled-down view of one canvas: composites every placement's texture
+//  at its placement, accepts sources dragged from the library, and lets the user
+//  click to select and drag tiles around. An inline inspector underneath drives
+//  the selected placement's size, z-order, and removal.
+// ----------------------------------------------------------------------------
+
+static void draw_editable_canvas(AppState & app, Canvas & canvas, const char * id_str)
+{
+    ImGui::PushID(id_str);
+
+    ImGui::BeginChild("canvas", ImVec2(0, 360), true, ImGuiWindowFlags_HorizontalScrollbar);
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float scale   = (canvas.w > 0) ? (avail_w / static_cast<float>(canvas.w)) : 1.0f;
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const ImVec2 canvas_px(canvas.w * scale, canvas.h * scale);
+
+    ImDrawList * dl = ImGui::GetWindowDrawList();
+
+    // A full-canvas invisible button: reserves the area, serves as the
+    // drag-drop target for library sources, and deselects on an empty click.
+    ImGui::InvisibleButton("bg", canvas_px);
+    const bool bg_hovered = ImGui::IsItemHovered();
+    if (ImGui::IsItemClicked()) canvas.selected = -1;
+
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload * pl = ImGui::AcceptDragDropPayload(kSourcePayload)) {
+            int sid = *static_cast<const int *>(pl->Data);
+            const ImVec2 m = ImGui::GetMousePos();
+            Placement p;
+            p.source_id = sid;
+            p.x = (m.x - origin.x) / scale;
+            p.y = (m.y - origin.y) / scale;
+            p.w = 480.0f;
+            p.h = 270.0f;
+            if (p.x < 0) p.x = 0;
+            if (p.y < 0) p.y = 0;
+            canvas.items.push_back(p);
+            canvas.selected = static_cast<int>(canvas.items.size()) - 1;
+        }
+        ImGui::EndDragDropTarget();
     }
 
-    ImGui::SeparatorText("Sources");
-    for (int i = 0; i < static_cast<int>(app.sources.size()); ++i) {
-        Source & src = *app.sources[i];
+    // The canvas backdrop (drawn after reserving, so it sits under the tiles).
+    dl->AddRectFilled(origin, ImVec2(origin.x + canvas_px.x, origin.y + canvas_px.y),
+                      IM_COL32(20, 20, 24, 255));
+    dl->AddRect(origin, ImVec2(origin.x + canvas_px.x, origin.y + canvas_px.y),
+                bg_hovered ? IM_COL32(120, 160, 200, 255) : IM_COL32(90, 90, 110, 255));
+
+    auto to_screen = [&](float cx, float cy) {
+        return ImVec2(origin.x + cx * scale, origin.y + cy * scale);
+    };
+
+    for (int i = 0; i < static_cast<int>(canvas.items.size()); ++i) {
+        Placement &    p   = canvas.items[i];
+        ActiveSource * src = find_source(app, p.source_id);
+
+        const ImVec2 tl = to_screen(p.x, p.y);
+        const ImVec2 br = to_screen(p.x + p.w, p.y + p.h);
+
+        if (src && src->texture && src->tex_w > 0) {
+            dl->AddImage((ImTextureID)(uintptr_t)src->texture, tl, br);
+        } else {
+            dl->AddRectFilled(tl, br, IM_COL32(40, 40, 48, 255));
+        }
+
+        const bool selected = (i == canvas.selected);
+        // Tally-style border: bright cyan when selected, dim otherwise.
+        dl->AddRect(tl, br, selected ? IM_COL32(90, 200, 255, 255) : IM_COL32(120, 120, 140, 255),
+                    0.0f, 0, selected ? 2.5f : 1.0f);
+        dl->AddText(ImVec2(tl.x + 4, tl.y + 4), IM_COL32(230, 230, 230, 255),
+                    src ? src->name : "(missing)");
+
+        ImGui::SetCursorScreenPos(tl);
         ImGui::PushID(i);
-        char label[128];
-        std::snprintf(label, sizeof(label), "%s%s##sel", src.name, src.started ? " *" : "");
-        if (ImGui::Selectable(label, i == app.selected))
-            app.selected = i;
+        ImGui::InvisibleButton("tile", ImVec2(std::max(br.x - tl.x, 1.0f),
+                                              std::max(br.y - tl.y, 1.0f)));
+        if (ImGui::IsItemActivated()) canvas.selected = i;
+        if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            const ImVec2 d = ImGui::GetIO().MouseDelta;
+            p.x += d.x / scale;
+            p.y += d.y / scale;
+            if (p.x < 0) p.x = 0;
+            if (p.y < 0) p.y = 0;
+            if (p.x > canvas.w - 1) p.x = static_cast<float>(canvas.w - 1);
+            if (p.y > canvas.h - 1) p.y = static_cast<float>(canvas.h - 1);
+        }
         ImGui::PopID();
     }
 
-    if (app.selected >= 0 && app.selected < static_cast<int>(app.sources.size())) {
-        Source & src = *app.sources[app.selected];
-        ImGui::Spacing();
-        draw_source_config(app, src);
+    ImGui::EndChild();
 
-        ImGui::Spacing();
-        if (ImGui::Button("Remove source")) {
-            stop_source(src);
-            app.sources.erase(app.sources.begin() + app.selected);
-            app.selected = -1;
+    // ---- inline inspector for the selected placement -----------------------
+    if (canvas.selected >= 0 && canvas.selected < static_cast<int>(canvas.items.size())) {
+        Placement & p = canvas.items[canvas.selected];
+        ImGui::DragFloat2("Position (px)", &p.x, 1.0f);
+        ImGui::DragFloat2("Size (px)", &p.w, 1.0f, 16.0f, 100000.0f);
+
+        // Z-order: last in the vector is drawn on top.
+        if (ImGui::Button("Bring forward") &&
+            canvas.selected < static_cast<int>(canvas.items.size()) - 1) {
+            std::swap(canvas.items[canvas.selected], canvas.items[canvas.selected + 1]);
+            canvas.selected += 1;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Send backward") && canvas.selected > 0) {
+            std::swap(canvas.items[canvas.selected], canvas.items[canvas.selected - 1]);
+            canvas.selected -= 1;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Remove from canvas")) {
+            canvas.items.erase(canvas.items.begin() + canvas.selected);
+            canvas.selected = -1;
         }
     }
+
+    ImGui::PopID();
+}
+
+// ----------------------------------------------------------------------------
+//  The tabbed, switcher-style canvas area
+// ----------------------------------------------------------------------------
+
+static void draw_canvas_tabs(AppState & app)
+{
+    if (!ImGui::BeginTabBar("buses")) return;
+
+    // ---- Program (Wall) tab ------------------------------------------------
+    if (ImGui::BeginTabItem("Program (Wall)")) {
+        ImGui::InputInt("Width",  &app.program.w);
+        ImGui::InputInt("Height", &app.program.h);
+        if (app.program.w < 16) app.program.w = 16;
+        if (app.program.h < 16) app.program.h = 16;
+        ImGui::Text("%d x %d - drag sources from the library, then move/resize them",
+                    app.program.w, app.program.h);
+        draw_editable_canvas(app, app.program, "program");
+        ImGui::EndTabItem();
+    }
+
+    // ---- One tab per dialled-in conference: its Send / Presentation buses ---
+    for (auto & up : app.library) {
+        ActiveSource & s = *up;
+        if (s.kind != SourceKind::Conference || !s.sink) continue;
+
+        char tab[96];
+        std::snprintf(tab, sizeof(tab), "%s (far end)###conf%d", s.name, s.id);
+        if (!ImGui::BeginTabItem(tab)) continue;
+
+        OutboundSink & sink = *s.sink;
+        const bool connected = (s.conn_status.load() == PULSE_CONNECTION_STATUS_CONNECTED);
+
+        ImGui::Text("Status: %s", status_to_string(s.conn_status.load()));
+        ImGui::SameLine();
+        // The "show both canvases" control: light up the presentation bus.
+        ImGui::BeginDisabled(!connected);
+        if (!sink.present_active) {
+            if (ImGui::Button("Start presentation")) start_presentation(s);
+        } else {
+            if (ImGui::Button("Stop presentation")) stop_presentation(s);
+        }
+        ImGui::EndDisabled();
+        if (!connected)
+            ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.4f, 1.0f),
+                               "Connect to the conference before sending media.");
+
+        // The SEND bus - exactly what this far end receives.
+        ImGui::SeparatorText("Send bus (what they see)");
+        // Guard: warn if a conference is feeding its own far-end back to itself.
+        for (const Placement & p : sink.send.items) {
+            if (p.source_id == s.id) {
+                ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f),
+                                   "Warning: this conference's own far-end is on its send bus "
+                                   "(video feedback loop).");
+                break;
+            }
+        }
+        draw_editable_canvas(app, sink.send, "send");
+
+        // The PRESENTATION bus - only meaningful while presentation is active.
+        if (sink.present_active) {
+            ImGui::SeparatorText("Presentation bus");
+            draw_editable_canvas(app, sink.presentation, "pres");
+        }
+
+        ImGui::EndTabItem();
+    }
+
+    ImGui::EndTabBar();
 }
 
 // ----------------------------------------------------------------------------
@@ -751,7 +1190,7 @@ int main()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
-    GLFWwindow * window = glfwCreateWindow(1440, 810, "videowall - Pulse compositor",
+    GLFWwindow * window = glfwCreateWindow(1600, 900, "videowall - Pulse production switcher",
                                            nullptr, nullptr);
     if (!window) {
         std::fprintf(stderr, "Failed to create GLFW window\n");
@@ -771,6 +1210,8 @@ int main()
     pulse_global_logger_callback(on_pulse_log, nullptr);
 
     AppState app;
+    app.staging.kind = SourceKind::Camera;
+    std::snprintf(app.staging.name, sizeof(app.staging.name), "Source 1");
     // A throwaway Pulse instance whose only job is to enumerate cameras for the
     // UI. Real media always flows through the per-source instances.
     app.enum_pulse = pulse_new();
@@ -778,6 +1219,13 @@ int main()
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        // 1. Pull the freshest frame out of every library source (updates both
+        //    the GL thumbnails and the CPU buffers the compositor reads).
+        for (auto & s : app.library) pump_frame(*s);
+
+        // 2. Composite each conference's buses and push them back in.
+        pump_outbound(app);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -790,16 +1238,15 @@ int main()
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
 
-        // Left rail: source management. Right: the canvas.
-        ImGui::BeginChild("rail", ImVec2(360, 0), true);
-        draw_sources_rail(app);
+        // Left: the source library. Right: the switcher buses.
+        ImGui::BeginChild("rail", ImVec2(380, 0), true);
+        draw_library_rail(app);
         ImGui::EndChild();
 
         ImGui::SameLine();
 
         ImGui::BeginChild("stage", ImVec2(0, 0), false);
-        ImGui::Text("Canvas %d x %d  (drag tiles to move them)", app.canvas_w, app.canvas_h);
-        draw_canvas(app);
+        draw_canvas_tabs(app);
         ImGui::EndChild();
 
         ImGui::End();
@@ -816,9 +1263,9 @@ int main()
     }
 
     // Tear every source (and its Pulse instance) down cleanly.
-    for (auto & src : app.sources)
+    for (auto & src : app.library)
         stop_source(*src);
-    app.sources.clear();
+    app.library.clear();
     if (app.enum_pulse) {
         pulse_free(app.enum_pulse);
         app.enum_pulse = nullptr;

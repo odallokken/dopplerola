@@ -1,9 +1,17 @@
-# videowall — many Pulse instances, one giant canvas
+# videowall — a Pulse production switcher (library, many canvases, send-back)
 
-A control-room **video wall**: one superwide canvas (3480×1080 by default) onto
-which you drop any number of **sources** and lay them out wherever you like —
+A control-room **production switcher**. You "prepare" any number of **sources** —
 cameras, RTSP/RTMP streams, still images, mp4 files, and live Pexip
-video-conferences.
+video-conferences — and each one, once started, joins a **library** down the
+left rail. From there you point-click-**drag** sources onto one or more
+**canvases** and lay them out wherever you like:
+
+* the **Program (Wall)** canvas — one superwide video wall (3480×1080 by default);
+* one **Send** canvas per dialled-in conference — exactly what *that* far end
+  receives, so two different conferences can be shown two different things, all
+  composed from the same library;
+* an optional **Presentation** canvas paired with each conference, lit up by a
+  **Start presentation** button so the far end sees *both* streams.
 
 It is the same idea as the "compositor" mode in
 [`pexninja`](../pexninja/), but built the other way round. Where pexninja runs a
@@ -13,18 +21,26 @@ compositing itself:
 
 ```
   ┌── Pulse #1 ──┐   input: camera        selfview ┐
-  ┌── Pulse #2 ──┐   input: rtsp://…       selfview ┤
-  ┌── Pulse #3 ──┐   input: image.png      selfview ┼─►  we paint each frame
-  ┌── Pulse #4 ──┐   input: clip.mp4       selfview ┤    onto the canvas at the
-  ┌── Pulse #5 ──┐   dial havard@pex…   MAIN (far) ─┘    source's x/y/w/h
-            …                                              (our own draw list)
+  ┌── Pulse #2 ──┐   input: rtsp://…       selfview ┤   library of active
+  ┌── Pulse #3 ──┐   input: image.png      selfview ┼─► sources we paint onto
+  ┌── Pulse #4 ──┐   input: clip.mp4       selfview ┤   each canvas at every
+  ┌── Pulse #5 ──┐   dial havard@pex…   MAIN (far) ─┘   placement's x/y/w/h
+            …                                            (our own compositor)
 ```
 
 For every *local* source the recipe is uniform: point the Pulse instance's
-**input** at the source, then pull its **self-view** back out and upload it to a
-GL texture. The one exception is the **video-conference** source: there we split
-`havard@pexipdemo.com` into conference `havard` on server `pexipdemo.com`, dial
-it over REST, and render the **MAIN** (far-end) video instead of the self-view.
+**input** at the source, then pull its **self-view** back out. The
+**video-conference** source is special — it is **both a source and a sink**:
+
+* **As a source** we split `havard@pexipdemo.com` into conference `havard` on
+  server `pexipdemo.com`, dial it over REST, and pull the **MAIN** (far-end)
+  video out — exactly the inbound-pull path every other source uses.
+* **As a sink** it also has outbound canvases we compose and push *back in*: we
+  render the Send canvas to an RGBA buffer and push it as that conference's
+  **MAIN** input (what the far end sees instead of a camera), and the
+  Presentation canvas onto the **PRESENTATION** input when active. This is the
+  mirror image of the pull path — `connect_input` + `push_frame` instead of
+  `connect_output` + `pull_frame_data` — borrowed from [`gateway`](../gateway/).
 
 ## What it highlights
 
@@ -39,6 +55,13 @@ it over REST, and render the **MAIN** (far-end) video instead of the self-view.
 * Pulling frames out with `pulse_data_session_connect_output` +
   `pulse_data_session_pull_frame_data` (self-view for local sources, MAIN for
   the conference) and compositing them ourselves.
+* The **send-back** direction for conferences: composing a canvas on the CPU and
+  pushing it in with `pulse_data_session_connect_input` +
+  `pulse_data_session_push_frame` on the **MAIN** slot (the far end's video) and
+  the **PRESENTATION** slot (the second stream, toggled live).
+* Separating **active sources** (the library) from **placements** (where a source
+  appears) so the same source can be dropped onto many canvases — even twice onto
+  the same one.
 
 ## Build & run
 
@@ -56,25 +79,41 @@ cmake --build build -j --target videowall
 
 ## Using it
 
-1. Set the canvas size (top-left), or keep the 3480×1080 default.
-2. Pick a kind in **Add source** and hit **+ Add**. Configure it (camera,
-   URL, file path, or `name@server` conference id) in the panel that appears.
-3. Press **Start** — a Pulse instance spins up behind that tile and its video
-   appears on the canvas.
-4. **Drag** tiles on the canvas to move them, or fine-tune position/size with
-   the numeric fields. Add as many sources as you like.
+1. In **Prepare a source** (top-left), pick a kind, configure it (camera, URL,
+   file path, or `name@server` conference id) and press **Prepare (start)**. A
+   Pulse instance spins up behind it and — once it has signal — it appears as a
+   live thumbnail in the **Library** below.
+2. **Drag** a library thumbnail onto any canvas to drop it there. Then **drag**
+   the tile to move it, or fine-tune position, size and z-order in the inspector
+   under the canvas. Drop the same source as many times as you like.
+3. Use the tabs on the right to switch buses:
+   * **Program (Wall)** — the big video wall (set its size at the top).
+   * **`name` (far end)** — one tab per dialled-in conference. Its **Send** bus
+     is exactly what that far end receives.
+4. In a conference tab, press **Start presentation** to light up a second
+   **Presentation** bus — compose it like any other canvas and the far end sees
+   *both* streams. **Stop presentation** tears it down.
+5. Select a library source to **Stop & remove** it; this also clears every
+   placement that referenced it across all canvases.
 
 ## Code tour
 
 It is all in [`src/main.cpp`](src/main.cpp), heavily commented:
 
-* `Source` — one tile: its kind, placement, config, **its own `Pulse *`**, and
-  the GL texture we paint.
-* `start_source` / `stop_source` — bring a source's Pulse instance up/down and
-  wire its input per kind.
-* `connect_camera` / `connect_file_via_mix` / `split_conference_id` — the
-  per-kind input plumbing.
-* `pump_frame_into_texture` — pull the latest RGBA frame (self-view, or MAIN for
-  a conference) into the source's texture.
-* `draw_canvas` — scale the canvas to the window and composite every source's
-  texture at its placement, with drag-to-move.
+* `ActiveSource` — one prepared source in the library: its kind, config, **its
+  own `Pulse *`**, the GL texture + CPU frame we paint, and (for a conference)
+  an `OutboundSink`.
+* `Placement` / `Canvas` — a lightweight `{source, x, y, w, h}` appearance, and a
+  sized list of them. The same `ActiveSource` can back many placements.
+* `OutboundSink` — a conference's send side: its Send + Presentation canvases,
+  the input data-sessions, and the scratch buffers we composite into.
+* `start_source` / `stop_source` — bring a source's Pulse instance up/down, wire
+  its input per kind, and (for a conference) open/close the outbound sessions.
+* `pump_frame` — pull the latest RGBA frame (self-view, or MAIN for a
+  conference) into the source's texture **and** a CPU copy.
+* `composite_canvas` / `push_canvas` / `pump_outbound` — paint a canvas's
+  placements into an RGBA buffer and push it into the conference's MAIN /
+  PRESENTATION input.
+* `draw_library_rail` / `draw_editable_canvas` / `draw_canvas_tabs` — the
+  switcher-style UI: library thumbnails, drag-to-place canvases, and the tabbed
+  Program / Send / Presentation buses.
