@@ -80,12 +80,14 @@ cmake --build build -j --target videowall
 ## Using it
 
 1. In **Prepare a source** (top-left), pick a kind, configure it (camera, URL,
-   file path, or `name@server` conference id) and press **Prepare (start)**. A
-   Pulse instance spins up behind it and — once it has signal — it appears as a
-   live thumbnail in the **Library** below.
+   file path, or `name@server` conference id — plus an optional **PIN code** for
+   PIN-protected conferences) and press **Prepare (start)**. A Pulse instance
+   spins up behind it and — once it has signal — it appears as a live thumbnail
+   in the **Library** below.
 2. **Drag** a library thumbnail onto any canvas to drop it there. Then **drag**
-   the tile to move it, or fine-tune position, size and z-order in the inspector
-   under the canvas. Drop the same source as many times as you like.
+   the tile to move it, drag its bottom-right **resize handle** to scale it
+   (aspect ratio is kept), or fine-tune position, width and z-order in the
+   inspector under the canvas. Drop the same source as many times as you like.
 3. Use the tabs on the right to switch buses:
    * **Program (Wall)** — the big video wall (set its size at the top).
    * **`name` (far end)** — one tab per dialled-in conference. Its **Send** bus

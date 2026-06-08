@@ -171,6 +171,9 @@ struct ActiveSource
     char rtmp_path[64]    = "live";
     char conference_id[256] = "";   // "name@server", e.g. "havard@pexipdemo.com"
     char display_name[128]  = "Video wall";
+    char pin_code[64]       = "";   // conference PIN (empty => none). Display is
+                                    // masked in the UI; like the other config
+                                    // fields it is kept in plain memory only.
     bool loop = true;               // mp4 looping
 
     // ---- the Pulse instance hiding behind this source ----------------------
@@ -210,6 +213,7 @@ struct Placement
     int   source_id = 0;            // which ActiveSource (by id)
     float x = 0.0f, y = 0.0f;       // top-left corner, in canvas pixels
     float w = 480.0f, h = 270.0f;   // size, in canvas pixels
+    float aspect = 480.0f / 270.0f; // w/h, preserved while resizing
 };
 
 struct AppState
@@ -597,7 +601,7 @@ static void start_source(ActiveSource & src)
             cfg.server_address  = server.c_str();
             cfg.conference_name = conference.c_str();
             cfg.display_name    = src.display_name;
-            cfg.pin_code        = nullptr;
+            cfg.pin_code        = src.pin_code[0] ? src.pin_code : nullptr;
 
             PulseAsyncOperationResultCallbackConfig result_cb{ on_conf_result, &src };
             PulseOperationProgressCallbackConfig    progress_cb{ on_conf_progress, &src };
@@ -854,7 +858,10 @@ static void draw_kind_config(AppState & app, ActiveSource & src)
         case SourceKind::Conference:
             ImGui::InputText("Conference id", src.conference_id, sizeof(src.conference_id));
             ImGui::InputText("Display name", src.display_name, sizeof(src.display_name));
-            ImGui::TextWrapped("e.g. havard@pexipdemo.com -> conference \"havard\" on \"pexipdemo.com\"");
+            ImGui::InputText("PIN code", src.pin_code, sizeof(src.pin_code),
+                             ImGuiInputTextFlags_Password);
+            ImGui::TextWrapped("e.g. havard@pexipdemo.com -> conference \"havard\" on \"pexipdemo.com\". "
+                               "Leave PIN empty if the conference has none.");
             break;
     }
 }
@@ -888,7 +895,12 @@ static void draw_library_rail(AppState & app)
     }
     app.staging.kind = static_cast<SourceKind>(app.staging_kind);
     ImGui::InputText("Name", app.staging.name, sizeof(app.staging.name));
+    // Scope the per-kind widgets so they never collide with the identical
+    // widgets the inspector draws for the selected source (otherwise preparing
+    // a second source of the same kind trips Dear ImGui's duplicate-ID check).
+    ImGui::PushID("staging");
     draw_kind_config(app, app.staging);
+    ImGui::PopID();
 
     if (ImGui::Button("Prepare (start)")) {
         // Move the staging config into a fresh library entry and start it. Only
@@ -904,6 +916,7 @@ static void draw_library_rail(AppState & app)
         std::memcpy(s.rtmp_path,     app.staging.rtmp_path,     sizeof(s.rtmp_path));
         std::memcpy(s.conference_id, app.staging.conference_id, sizeof(s.conference_id));
         std::memcpy(s.display_name,  app.staging.display_name,  sizeof(s.display_name));
+        std::memcpy(s.pin_code,      app.staging.pin_code,      sizeof(s.pin_code));
         s.loop = app.staging.loop;
         s.id   = app.next_source_id++;
 
@@ -965,9 +978,11 @@ static void draw_library_rail(AppState & app)
     if (sel) {
         ImGui::SeparatorText("Selected source");
         ImGui::Text("%s  -  %s", sel->name, kSourceKindLabels[static_cast<int>(sel->kind)]);
+        ImGui::PushID("inspector");
         ImGui::BeginDisabled(true);
         draw_kind_config(app, *sel);
         ImGui::EndDisabled();
+        ImGui::PopID();
         if (!sel->last_error.empty())
             ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", sel->last_error.c_str());
         if (ImGui::Button("Stop & remove from library"))
@@ -1000,6 +1015,10 @@ static void draw_editable_canvas(AppState & app, Canvas & canvas, const char * i
 
     // A full-canvas invisible button: reserves the area, serves as the
     // drag-drop target for library sources, and deselects on an empty click.
+    // SetNextItemAllowOverlap() lets the per-tile buttons submitted *after* it
+    // still receive hover/clicks — without it this background button would swallow
+    // every interaction and the tiles could not be moved or resized.
+    ImGui::SetNextItemAllowOverlap();
     ImGui::InvisibleButton("bg", canvas_px);
     const bool bg_hovered = ImGui::IsItemHovered();
     if (ImGui::IsItemClicked()) canvas.selected = -1;
@@ -1014,6 +1033,13 @@ static void draw_editable_canvas(AppState & app, Canvas & canvas, const char * i
             p.y = (m.y - origin.y) / scale;
             p.w = 480.0f;
             p.h = 270.0f;
+            // Adopt the source's native aspect ratio (so the resize handle keeps
+            // it). Fall back to 16:9 until the first frame has been pulled.
+            if (ActiveSource * s = find_source(app, sid);
+                s && s->frame_cpu.w > 0 && s->frame_cpu.h > 0) {
+                p.aspect = static_cast<float>(s->frame_cpu.w) / s->frame_cpu.h;
+                p.h = p.w / p.aspect;
+            }
             if (p.x < 0) p.x = 0;
             if (p.y < 0) p.y = 0;
             canvas.items.push_back(p);
@@ -1054,6 +1080,9 @@ static void draw_editable_canvas(AppState & app, Canvas & canvas, const char * i
 
         ImGui::SetCursorScreenPos(tl);
         ImGui::PushID(i);
+        // Allow the resize handle (and higher-z tiles) submitted afterwards to
+        // win the overlap and stay interactive.
+        ImGui::SetNextItemAllowOverlap();
         ImGui::InvisibleButton("tile", ImVec2(std::max(br.x - tl.x, 1.0f),
                                               std::max(br.y - tl.y, 1.0f)));
         if (ImGui::IsItemActivated()) canvas.selected = i;
@@ -1066,6 +1095,29 @@ static void draw_editable_canvas(AppState & app, Canvas & canvas, const char * i
             if (p.x > canvas.w - 1) p.x = static_cast<float>(canvas.w - 1);
             if (p.y > canvas.h - 1) p.y = static_cast<float>(canvas.h - 1);
         }
+
+        // A bottom-right resize handle for the selected tile. Dragging it scales
+        // the placement while preserving its aspect ratio.
+        if (selected) {
+            const float hsz = 14.0f;
+            const ImVec2 hmin(br.x - hsz, br.y - hsz);
+            dl->AddRectFilled(hmin, br, IM_COL32(90, 200, 255, 255));
+            dl->AddRect(hmin, br, IM_COL32(20, 20, 24, 255));
+            ImGui::SetCursorScreenPos(hmin);
+            ImGui::InvisibleButton("resize", ImVec2(hsz, hsz));
+            if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                const ImVec2 d = ImGui::GetIO().MouseDelta;
+                float neww = p.w + d.x / scale;
+                if (neww < 16.0f) neww = 16.0f;
+                if (p.x + neww > canvas.w) neww = canvas.w - p.x;
+                const float aspect = (p.aspect > 0.0f) ? p.aspect
+                                   : (p.h > 0.0f ? p.w / p.h : 16.0f / 9.0f);
+                p.w = neww;
+                p.h = neww / aspect;
+            }
+            if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
+        }
         ImGui::PopID();
     }
 
@@ -1075,7 +1127,14 @@ static void draw_editable_canvas(AppState & app, Canvas & canvas, const char * i
     if (canvas.selected >= 0 && canvas.selected < static_cast<int>(canvas.items.size())) {
         Placement & p = canvas.items[canvas.selected];
         ImGui::DragFloat2("Position (px)", &p.x, 1.0f);
-        ImGui::DragFloat2("Size (px)", &p.w, 1.0f, 16.0f, 100000.0f);
+        // Width drives the size; height follows from the locked aspect ratio.
+        if (ImGui::DragFloat("Width (px)", &p.w, 1.0f, 16.0f, 100000.0f)) {
+            if (p.w < 16.0f) p.w = 16.0f;
+            const float aspect = (p.aspect > 0.0f) ? p.aspect
+                               : (p.h > 0.0f ? p.w / p.h : 16.0f / 9.0f);
+            p.h = p.w / aspect;
+        }
+        ImGui::Text("Size: %.0f x %.0f px (aspect locked)", p.w, p.h);
 
         // Z-order: last in the vector is drawn on top.
         if (ImGui::Button("Bring forward") &&

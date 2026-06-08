@@ -13,6 +13,12 @@ target_link_libraries(videowall PRIVATE
     pexip::pulse
     Threads::Threads)
 
+# macOS still ships OpenGL but marks every GL entry point deprecated; silence
+# those so the demo builds cleanly there as well as on Linux.
+if(APPLE)
+    target_compile_definitions(videowall PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+
 # Find libpexpulse.so at run time, and generate build/run-videowall.sh so the
 # demo runs without the user setting LD_LIBRARY_PATH by hand.
 pulse_demo_rpath(videowall)
