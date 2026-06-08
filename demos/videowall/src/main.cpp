@@ -56,7 +56,10 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <cmath>
+#include <deque>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -69,6 +72,10 @@
 
 // The single header that pulls in the full Pulse API surface.
 #include <pexpulse/pulse.h>
+
+// ImGui-Addons file browser (same one pexninja uses) for the "Browse..."
+// buttons that point Image / MP4 sources at a file on disk.
+#include <ImGuiFileBrowser.h>
 
 // ----------------------------------------------------------------------------
 //  Source kinds
@@ -87,6 +94,17 @@ enum class SourceKind
 static const char * kSourceKindLabels[] = {
     "Camera", "RTSP stream", "RTMP stream", "Image (jpg/png)", "MP4 file", "Video-conference",
 };
+
+// The resolution we send to each conference far end. The video *wall* (Program)
+// is deliberately superwide, but what we push back into a conference must match a
+// sensible endpoint resolution - so the SEND (and PRESENTATION) buses are a plain
+// 1080p frame rather than the wall's geometry.
+static const int kSendCanvasW = 1920;
+static const int kSendCanvasH = 1080;
+
+// How many audio-level samples Pulse keeps in its smoothing window for the VU
+// meters. Mirrors pexninja's choice.
+static const uint32_t kAudioLevelWindow = 25;
 
 // ----------------------------------------------------------------------------
 //  A small CPU-side RGBA image - the freshest frame for a source, and the
@@ -197,6 +215,28 @@ struct ActiveSource
     // Conference sources additionally own an outbound sink (the send side).
     std::unique_ptr<OutboundSink> sink;
 
+    // ---- audio metering + mixer strip --------------------------------------
+    //
+    //  Every source feeds one channel strip in the audio mixer. The VU meter is
+    //  driven by Pulse's input audio-level callback
+    //  (pulse_register_device_audio_level_callback), the same API pexninja uses
+    //  for its mic meter. `audio_levels` is filled from a Pulse callback thread
+    //  and drained on the UI thread, so it is guarded by `audio_mutex`.
+    std::mutex            audio_mutex;
+    std::deque<uint8_t>   audio_levels;        // raw |dB| samples, newest at back
+    bool                  audio_cb_registered = false;
+    float                 vu = 0.0f;           // smoothed 0..1 level (UI thread)
+
+    // Mixer controls. These are real UI today but only *wired* to Pulse later -
+    // they are the knobs/switches the demo exposes so the plumbing has a home.
+    float gain_db           = 0.0f;            // channel fader, -60..+12 dB
+    bool  mute              = false;
+    bool  solo              = false;
+    bool  noise_suppression = false;           // -> a Pulse NS API, later
+    float eq_low            = 0.0f;            // 3-band EQ, -12..+12 dB each
+    float eq_mid            = 0.0f;
+    float eq_high           = 0.0f;
+
     // ---- rendering ----------------------------------------------------------
     GLuint    texture = 0;          // the inbound frame, for on-screen thumbnails
     int       tex_w   = 0;
@@ -270,6 +310,27 @@ static void on_conf_result(const PulseError err, void * uc)
 static void on_conf_progress(const PulseOperationProgressInfo * /*info*/, void * /*uc*/)
 {
     // The wall does not surface per-step progress; the status enum is enough.
+}
+
+// ----------------------------------------------------------------------------
+//  Audio-level callback (one per source, drives that strip's VU meter)
+// ----------------------------------------------------------------------------
+//
+//  Pulse hands us a short list of recent input audio levels for the source's own
+//  instance. Each `level` is a magnitude in (negated) dB - 0 is loud, ~127 is
+//  silence - exactly as pexninja consumes it. We stash them and let the UI
+//  thread map them to a 0..1 bar.
+
+static void on_source_audio_level(void * uc, const PulseAudioLevelMetasList * list)
+{
+    auto * src = static_cast<ActiveSource *>(uc);
+    if (!list) return;
+
+    std::lock_guard<std::mutex> lock(src->audio_mutex);
+    for (size_t i = 0; i < list->len; ++i)
+        src->audio_levels.push_back(list->metas[i].level);
+    while (src->audio_levels.size() > kAudioLevelWindow)
+        src->audio_levels.pop_front();
 }
 
 // ----------------------------------------------------------------------------
@@ -510,6 +571,72 @@ static bool split_conference_id(const char * id, std::string & conference, std::
 }
 
 // ----------------------------------------------------------------------------
+//  Shared file picker (Image / MP4 "Browse..." buttons)
+// ----------------------------------------------------------------------------
+//
+//  A single ImGui-Addons file browser plus a one-slot "pending request" record
+//  that remembers which char buffer the chosen path should land in. The browser
+//  is a modal popup, so at most one can be open at a time - one instance + one
+//  request is all we need. Lifted from pexninja's file_picker. render_pending()
+//  must be called once per frame at the top level (outside any Begin/End).
+
+namespace file_picker
+{
+struct Request
+{
+    char *      dest      = nullptr;   // caller's fixed-size buffer to overwrite
+    size_t      dest_size = 0;
+    std::string title;                 // unique modal id + window title
+    std::string exts;                  // comma-separated extensions, e.g. ".mp4"
+    bool        just_opened = false;   // defer OpenPopup to render_pending()
+};
+
+static imgui_addons::ImGuiFileBrowser g_browser;
+static Request                        g_request;
+
+// Open the picker for `dest`. Safe to call inside any window scope.
+static void request_open(char * dest, size_t dest_size, const char * title, const char * exts)
+{
+    g_request.dest        = dest;
+    g_request.dest_size   = dest_size;
+    g_request.title       = title ? title : "Open file";
+    g_request.exts        = exts ? exts : "*.*";
+    g_request.just_opened = true;
+}
+
+// Render the open dialog (if any). Call once per frame at the top level so the
+// popup's ID stack is stable across windows. Cheap when nothing is pending.
+static void render_pending()
+{
+    if (g_request.dest == nullptr) return;
+    if (g_request.just_opened) {
+        ImGui::OpenPopup(g_request.title.c_str());
+        g_request.just_opened = false;
+    }
+    if (g_browser.showFileDialog(g_request.title,
+                                 imgui_addons::ImGuiFileBrowser::DialogMode::OPEN,
+                                 ImVec2(700, 380), g_request.exts)) {
+        std::snprintf(g_request.dest, g_request.dest_size, "%s",
+                      g_browser.selected_path.c_str());
+        g_request.dest      = nullptr;
+        g_request.dest_size = 0;
+    } else if (!ImGui::IsPopupOpen(g_request.title.c_str())) {
+        // Cancelled / closed without a selection.
+        g_request.dest      = nullptr;
+        g_request.dest_size = 0;
+    }
+}
+
+// A "Browse..." button that opens the picker for `dest` when clicked.
+static void browse_button(const char * label_id, char * dest, size_t dest_size,
+                          const char * title, const char * exts)
+{
+    if (ImGui::Button(label_id))
+        request_open(dest, dest_size, title, exts);
+}
+} // namespace file_picker
+
+// ----------------------------------------------------------------------------
 //  Source lifecycle
 // ----------------------------------------------------------------------------
 
@@ -613,12 +740,16 @@ static void start_source(ActiveSource & src)
             // push it; PRESENTATION is opened lazily by "Start presentation".
             if (err == PULSE_SUCCESS) {
                 src.sink = std::make_unique<OutboundSink>();
+                // The SEND bus is exactly what the far end receives, so it must
+                // match the resolution we send. Keep it a plain 1080p frame
+                // (1920x1080) - NOT the superwide wall geometry - so conference
+                // endpoints get a sensible, standard picture.
                 src.sink->send.name         = "Send";
-                src.sink->send.w            = 1280;
-                src.sink->send.h            = 720;
+                src.sink->send.w            = kSendCanvasW;
+                src.sink->send.h            = kSendCanvasH;
                 src.sink->presentation.name = "Presentation";
-                src.sink->presentation.w    = 1280;
-                src.sink->presentation.h    = 720;
+                src.sink->presentation.w    = kSendCanvasW;
+                src.sink->presentation.h    = kSendCanvasH;
 
                 PulseDataSessionConfig * icfg =
                     make_rgba_input_config(src.sink->send.w, src.sink->send.h);
@@ -652,6 +783,14 @@ static void start_source(ActiveSource & src)
     pulse_data_session_connect_output(src.pulse, dcfg, src.render_content);
     pulse_data_session_config_free(dcfg);
 
+    // Subscribe to this instance's input audio levels so the mixer's VU meter
+    // for this strip has data. Best-effort: a source with no audio simply reads
+    // as silence, which is exactly what a mixer channel should show.
+    if (pulse_register_device_audio_level_callback(src.pulse, PULSE_MEDIA_INPUT,
+                                                   kAudioLevelWindow,
+                                                   on_source_audio_level, &src) == PULSE_SUCCESS)
+        src.audio_cb_registered = true;
+
     src.started = true;
 }
 
@@ -663,6 +802,18 @@ static void stop_source(ActiveSource & src)
         src.started = false;
         return;
     }
+
+    // Stop the VU-meter feed before anything else (mirrors the register in
+    // start_source).
+    if (src.audio_cb_registered) {
+        pulse_deregister_device_audio_level_callback(src.pulse, PULSE_MEDIA_INPUT);
+        src.audio_cb_registered = false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(src.audio_mutex);
+        src.audio_levels.clear();
+    }
+    src.vu = 0.0f;
 
     // Disconnect the data-session output (mirrors connect_output).
     pulse_data_session_disconnect(src.pulse, PULSE_MEDIA_VIDEO, PULSE_MEDIA_OUTPUT,
@@ -850,9 +1001,15 @@ static void draw_kind_config(AppState & app, ActiveSource & src)
             break;
         case SourceKind::Image:
             ImGui::InputText("Image path", src.file_path, sizeof(src.file_path));
+            ImGui::SameLine();
+            file_picker::browse_button("Browse...##img", src.file_path, sizeof(src.file_path),
+                                       "Open image", ".jpg,.jpeg,.png,.bmp,.gif,.*");
             break;
         case SourceKind::Mp4:
             ImGui::InputText("MP4 path", src.file_path, sizeof(src.file_path));
+            ImGui::SameLine();
+            file_picker::browse_button("Browse...##mp4", src.file_path, sizeof(src.file_path),
+                                       "Open MP4", ".mp4,.mov,.mkv,.webm,.*");
             ImGui::Checkbox("Loop", &src.loop);
             break;
         case SourceKind::Conference:
@@ -1158,6 +1315,188 @@ static void draw_editable_canvas(AppState & app, Canvas & canvas, const char * i
 }
 
 // ----------------------------------------------------------------------------
+//  Audio mixer - a classic channel strip per library source
+// ----------------------------------------------------------------------------
+//
+//  Each source feeds one vertical strip: a live VU meter (driven by Pulse's
+//  input audio-level callback, see on_source_audio_level) sitting next to a gain
+//  fader, a 3-band EQ of rotary knobs, and noise-suppression / mute / solo
+//  switches. The meter is real; the knobs and switches are UI we can wire into
+//  Pulse APIs later (noise suppression, an EQ, channel gain).
+// ----------------------------------------------------------------------------
+
+// Centre the next single-line item of width `item_w` within `avail_w`.
+static void center_item(float item_w, float avail_w)
+{
+    float off = (avail_w - item_w) * 0.5f;
+    if (off > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + off);
+}
+
+// A small rotary knob. Drag up/down to change. `caption` is drawn centred below.
+static void mixer_knob(const char * caption, float * value, float vmin, float vmax,
+                       float avail_w)
+{
+    const float radius   = 16.0f;
+    const float diameter = radius * 2.0f;
+
+    center_item(diameter, avail_w);
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImVec2 center(pos.x + radius, pos.y + radius);
+
+    ImGui::InvisibleButton(caption, ImVec2(diameter, diameter));
+    const bool active = ImGui::IsItemActive();
+    if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        const float range = vmax - vmin;
+        *value += -ImGui::GetIO().MouseDelta.y * range / 180.0f;  // up = louder
+        if (*value < vmin) *value = vmin;
+        if (*value > vmax) *value = vmax;
+    }
+    if (ImGui::IsItemHovered() || active) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+
+    const float t   = (vmax > vmin) ? (*value - vmin) / (vmax - vmin) : 0.0f;
+    const float kPi = 3.14159265358979323846f;
+    const float a0  = kPi * 0.75f;         // sweep from lower-left...
+    const float a1  = kPi * 2.25f;         // ...round to lower-right
+    const float ang = a0 + t * (a1 - a0);
+
+    ImDrawList * dl = ImGui::GetWindowDrawList();
+    dl->AddCircleFilled(center, radius, IM_COL32(38, 38, 46, 255), 32);
+    dl->AddCircle(center, radius,
+                  active ? IM_COL32(90, 200, 255, 255) : IM_COL32(110, 110, 130, 255), 32, 2.0f);
+    dl->AddLine(center, ImVec2(center.x + cosf(ang) * (radius - 3.0f),
+                               center.y + sinf(ang) * (radius - 3.0f)),
+                IM_COL32(235, 235, 235, 255), 2.0f);
+
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), "%s %+.0f", caption, *value);
+    center_item(ImGui::CalcTextSize(buf).x, avail_w);
+    ImGui::TextUnformatted(buf);
+}
+
+// Sample the freshest input level for `s`, smooth it, and paint a vertical VU
+// meter `w` x `h` at the current cursor. Green below ~-12 dB, amber, then red.
+static void mixer_vu_meter(ActiveSource & s, float w, float h)
+{
+    const float mindb = -127.0f, maxdb = 0.0f;
+    unsigned int dbi = 0;
+    {
+        std::lock_guard<std::mutex> lock(s.audio_mutex);
+        if (!s.audio_levels.empty()) dbi = s.audio_levels.back();
+    }
+    const float dbf    = (dbi != 0) ? -static_cast<float>(dbi) : mindb;
+    float       target = (dbf - mindb) / (maxdb - mindb);
+    if (target < 0.0f) target = 0.0f;
+    if (target > 1.0f) target = 1.0f;
+    s.vu += (target - s.vu) * 0.35f;   // simple attack/decay smoothing
+
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(w, h));
+    ImDrawList * dl = ImGui::GetWindowDrawList();
+
+    const ImVec2 bmin = p;
+    const ImVec2 bmax(p.x + w, p.y + h);
+    dl->AddRectFilled(bmin, bmax, IM_COL32(20, 20, 24, 255));
+
+    const float fill_h = h * s.vu;
+    const ImVec2 fmin(bmin.x, bmax.y - fill_h);
+    ImU32 col = IM_COL32(60, 200, 90, 255);          // green
+    if (s.vu > 0.85f)      col = IM_COL32(220, 60, 60, 255);   // red
+    else if (s.vu > 0.70f) col = IM_COL32(230, 200, 60, 255);  // amber
+    dl->AddRectFilled(fmin, bmax, col);
+    dl->AddRect(bmin, bmax, IM_COL32(110, 110, 130, 255));
+}
+
+// A chunky on/off switch styled as a coloured toggle button.
+static bool mixer_switch(const char * label, bool * on, ImU32 on_col, float avail_w)
+{
+    ImGui::PushStyleColor(ImGuiCol_Button,
+                          *on ? on_col : IM_COL32(50, 50, 58, 255));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          *on ? on_col : IM_COL32(70, 70, 80, 255));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, on_col);
+    const float bw = avail_w;
+    bool clicked = ImGui::Button(label, ImVec2(bw, 0));
+    if (clicked) *on = !*on;
+    ImGui::PopStyleColor(3);
+    return clicked;
+}
+
+static void draw_audio_mixer(AppState & app)
+{
+    ImGui::TextWrapped("One channel strip per library source. The VU meters are live - they "
+                       "read each source's input audio levels via Pulse's "
+                       "pulse_register_device_audio_level_callback. The gain fader, EQ knobs and "
+                       "the noise-suppression / mute / solo switches are wired into the UI now so "
+                       "the matching Pulse APIs can be plumbed in later.");
+    ImGui::Separator();
+
+    if (app.library.empty()) {
+        ImGui::TextDisabled("No sources yet - prepare one from the library on the left.");
+        return;
+    }
+
+    const float strip_w = 116.0f;
+    ImGui::BeginChild("mixer_strips", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+
+    int idx = 0;
+    for (auto & up : app.library) {
+        ActiveSource & s = *up;
+        ImGui::PushID(s.id);
+        if (idx++ > 0) ImGui::SameLine();
+
+        ImGui::BeginChild("strip", ImVec2(strip_w, 0), true);
+        const float inner = ImGui::GetContentRegionAvail().x;
+
+        // ---- header ---------------------------------------------------------
+        center_item(ImGui::CalcTextSize(s.name).x, inner);
+        ImGui::TextUnformatted(s.name);
+        const char * kind = kSourceKindLabels[static_cast<int>(s.kind)];
+        center_item(ImGui::CalcTextSize(kind).x, inner);
+        ImGui::TextColored(ImVec4(0.6f, 0.7f, 0.85f, 1.0f), "%s", kind);
+        ImGui::Separator();
+
+        // ---- 3-band EQ ------------------------------------------------------
+        center_item(ImGui::CalcTextSize("EQ").x, inner);
+        ImGui::TextDisabled("EQ");
+        mixer_knob("Hi",  &s.eq_high, -12.0f, 12.0f, inner);
+        mixer_knob("Mid", &s.eq_mid,  -12.0f, 12.0f, inner);
+        mixer_knob("Lo",  &s.eq_low,  -12.0f, 12.0f, inner);
+        ImGui::Separator();
+
+        // ---- noise suppression switch --------------------------------------
+        mixer_switch(s.noise_suppression ? "NS: ON##ns" : "NS: off##ns",
+                     &s.noise_suppression, IM_COL32(60, 160, 220, 255), inner);
+        ImGui::Separator();
+
+        // ---- VU meter + gain fader, side by side ---------------------------
+        const float meter_h = 150.0f;
+        const float meter_w = 18.0f;
+        const float fader_w = 22.0f;
+        center_item(meter_w + 8.0f + fader_w, inner);
+        mixer_vu_meter(s, meter_w, meter_h);
+        ImGui::SameLine(0.0f, 8.0f);
+        ImGui::VSliderFloat("##gain", ImVec2(fader_w, meter_h), &s.gain_db,
+                            -60.0f, 12.0f, "");
+        char gbuf[32];
+        std::snprintf(gbuf, sizeof(gbuf), "%+.0f dB", s.gain_db);
+        center_item(ImGui::CalcTextSize(gbuf).x, inner);
+        ImGui::TextUnformatted(gbuf);
+        ImGui::Separator();
+
+        // ---- mute / solo ----------------------------------------------------
+        const float half = (inner - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        mixer_switch("M##mute", &s.mute, IM_COL32(220, 80, 80, 255), half);
+        ImGui::SameLine();
+        mixer_switch("S##solo", &s.solo, IM_COL32(220, 190, 60, 255), half);
+
+        ImGui::EndChild();
+        ImGui::PopID();
+    }
+
+    ImGui::EndChild();
+}
+
+// ----------------------------------------------------------------------------
 //  The tabbed, switcher-style canvas area
 // ----------------------------------------------------------------------------
 
@@ -1174,6 +1513,12 @@ static void draw_canvas_tabs(AppState & app)
         ImGui::Text("%d x %d - drag sources from the library, then move/resize them",
                     app.program.w, app.program.h);
         draw_editable_canvas(app, app.program, "program");
+        ImGui::EndTabItem();
+    }
+
+    // ---- Audio mixer tab ---------------------------------------------------
+    if (ImGui::BeginTabItem("Audio Mixer")) {
+        draw_audio_mixer(app);
         ImGui::EndTabItem();
     }
 
@@ -1309,6 +1654,10 @@ int main()
         ImGui::EndChild();
 
         ImGui::End();
+
+        // The file picker is a modal popup; render it at the top level (outside
+        // the main window's Begin/End) so its ID stack is stable.
+        file_picker::render_pending();
 
         ImGui::Render();
         int display_w = 0, display_h = 0;
