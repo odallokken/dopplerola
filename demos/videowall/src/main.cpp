@@ -103,8 +103,16 @@ static const int kSendCanvasW = 1920;
 static const int kSendCanvasH = 1080;
 
 // How many audio-level samples Pulse keeps in its smoothing window for the VU
-// meters. Mirrors pexninja's choice.
+// meters (the size of the level-averaging window Pulse maintains internally).
 static const uint32_t kAudioLevelWindow = 25;
+
+// VU-meter mapping: Pulse reports input levels as a (negated) dB magnitude where
+// 0 is loud and ~127 is silence. These bound the 0..1 bar, and the smoothing
+// factor sets how quickly the bar chases a new level each frame.
+static const float kMinAudioLevelDb     = -127.0f;
+static const float kMaxAudioLevelDb     = 0.0f;
+static const float kVuMeterSmoothing    = 0.35f;
+static const float kPi                  = 3.14159265358979323846f;
 
 // ----------------------------------------------------------------------------
 //  A small CPU-side RGBA image - the freshest frame for a source, and the
@@ -1354,7 +1362,6 @@ static void mixer_knob(const char * caption, float * value, float vmin, float vm
     if (ImGui::IsItemHovered() || active) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
 
     const float t   = (vmax > vmin) ? (*value - vmin) / (vmax - vmin) : 0.0f;
-    const float kPi = 3.14159265358979323846f;
     const float a0  = kPi * 0.75f;         // sweep from lower-left...
     const float a1  = kPi * 2.25f;         // ...round to lower-right
     const float ang = a0 + t * (a1 - a0);
@@ -1377,17 +1384,16 @@ static void mixer_knob(const char * caption, float * value, float vmin, float vm
 // meter `w` x `h` at the current cursor. Green below ~-12 dB, amber, then red.
 static void mixer_vu_meter(ActiveSource & s, float w, float h)
 {
-    const float mindb = -127.0f, maxdb = 0.0f;
     unsigned int dbi = 0;
     {
         std::lock_guard<std::mutex> lock(s.audio_mutex);
         if (!s.audio_levels.empty()) dbi = s.audio_levels.back();
     }
-    const float dbf    = (dbi != 0) ? -static_cast<float>(dbi) : mindb;
-    float       target = (dbf - mindb) / (maxdb - mindb);
+    const float dbf    = (dbi != 0) ? -static_cast<float>(dbi) : kMinAudioLevelDb;
+    float       target = (dbf - kMinAudioLevelDb) / (kMaxAudioLevelDb - kMinAudioLevelDb);
     if (target < 0.0f) target = 0.0f;
     if (target > 1.0f) target = 1.0f;
-    s.vu += (target - s.vu) * 0.35f;   // simple attack/decay smoothing
+    s.vu += (target - s.vu) * kVuMeterSmoothing;   // simple attack/decay smoothing
 
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImGui::Dummy(ImVec2(w, h));
