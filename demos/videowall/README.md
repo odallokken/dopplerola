@@ -1,9 +1,12 @@
 # videowall — a Pulse production switcher (library, many canvases, send-back)
 
 A control-room **production switcher**. You "prepare" any number of **sources** —
-cameras, RTSP/RTMP streams, still images, mp4 files, and live Pexip
-video-conferences — and each one, once started, joins a **library** down the
-left rail. From there you point-click-**drag** sources onto one or more
+cameras, **microphones**, RTSP/RTMP streams, still images, mp4 files, and live
+Pexip video-conferences — and each one, once started, joins a **library** down
+the left rail. Every source carries a **media type** — **audio**, **video**, or
+**both** — which decides where it can go: an audio source feeds the **Audio
+Mixer**, a video source can be dropped onto a **canvas**, and a "both" source
+does both. From there you point-click-**drag** sources onto one or more
 **canvases** and lay them out wherever you like:
 
 * the **Program (Wall)** canvas — one superwide video wall (3480×1080 by default);
@@ -15,11 +18,15 @@ left rail. From there you point-click-**drag** sources onto one or more
 * an optional **Presentation** canvas paired with each conference, lit up by a
   **Start presentation** button so the far end sees *both* streams.
 
-There is also an **Audio Mixer** tab: a classic console with one channel strip
-per source — a live VU meter (fed by Pulse's input audio-level callback), a gain
-fader, a three-band EQ of rotary knobs, and noise-suppression / mute / solo
-switches (the switches and knobs are UI today, ready to wire into the matching
-Pulse APIs later).
+There is also an **Audio Mixer** that sits **underneath the canvas** (drag the
+splitter between them to trade height, so you can watch the wall and ride the
+faders at once). It is a classic console with one channel strip per
+*audio-capable* source — a live VU meter (fed by Pulse's input audio-level
+callback), a gain fader, a three-band EQ of rotary knobs, and noise-suppression
+/ mute / solo switches (the switches and knobs are UI today, ready to wire into
+the matching Pulse APIs later). The VU meters read each source's **input** audio
+level, so a **Microphone** source — which connects a real capture device —
+shows live activity; sources with no captured audio simply read as silence.
 
 It is the same idea as the "compositor" mode in
 [`pexninja`](../pexninja/), but built the other way round. Where pexninja runs a
@@ -55,7 +62,8 @@ For every *local* source the recipe is uniform: point the Pulse instance's
 * One `Pulse *` **per source** — `pulse_new()` / `pulse_free()` many times over,
   the multi-instance pattern from [`gateway`](../gateway/) taken to its limit.
 * Driving each instance's input per source kind:
-  * `pulse_device_session_connect_device` (camera)
+  * `pulse_device_session_connect_device` (camera **or microphone** — a video or
+    an audio capture device on MAIN)
   * `pulse_rtsp_session_connect_input` + `pulse_rtsp_session_bind_to_content` (RTSP)
   * `pulse_rtmp_session_connect_input` (RTMP)
   * `pulse_video_mix_input_from_file` / `…_from_file_with_loop` (image / mp4)
@@ -72,7 +80,8 @@ For every *local* source the recipe is uniform: point the Pulse instance's
   the same one.
 * Live audio metering with `pulse_register_device_audio_level_callback` /
   `pulse_deregister_device_audio_level_callback` — one subscription per source,
-  driving the VU meters in the **Audio Mixer** tab.
+  driving the VU meters in the **Audio Mixer** (a **Microphone** source connects
+  a capture device, so its meter shows real input activity).
 
 ## Build & run
 
@@ -90,22 +99,29 @@ cmake --build build -j --target videowall
 
 ## Using it
 
-1. In **Prepare a source** (top-left), pick a kind, configure it (camera, URL,
-   file path, or `name@server` conference id — plus an optional **PIN code** for
-   PIN-protected conferences) and press **Prepare (start)**. For **Image** and
-   **MP4** sources a **Browse…** button opens a file dialog so you can pick the
-   file off disk. A Pulse instance spins up behind it and — once it has signal —
-   it appears as a live thumbnail in the **Library** below.
-2. **Drag** a library thumbnail onto any canvas to drop it there. Then **drag**
+1. In **Prepare a source** (top-left), pick a kind, set its **Media** type
+   (audio / video / both — it defaults sensibly per kind), configure it (camera,
+   microphone, URL, file path, or `name@server` conference id — plus an optional
+   **PIN code** for PIN-protected conferences) and press **Prepare (start)**. For
+   **Image** and **MP4** sources a **Browse…** button opens a file dialog so you
+   can pick the file off disk. A Pulse instance spins up behind it and — once it
+   has signal — it appears in the **Library** below (a live thumbnail for video
+   sources, an `(audio)` tile for audio-only ones).
+2. **Drag** a video-capable library thumbnail onto any canvas to drop it there
+   (audio-only sources are not draggable — they live in the mixer). Then **drag**
    the tile to move it, drag its bottom-right **resize handle** to scale it
    (aspect ratio is kept), or fine-tune position, width and z-order in the
    inspector under the canvas. Drop the same source as many times as you like.
-3. Use the tabs on the right to switch buses:
+   Each canvas scales to fit entirely in view — even a 1920×1080 send bus or the
+   superwide wall — so you never have to scroll to see the whole thing.
+3. Use the tabs at the top of the stage to switch buses:
    * **Program (Wall)** — the big video wall (set its size at the top).
-   * **Audio Mixer** — a channel strip per source: a live VU meter, a gain
-     fader, EQ knobs and noise-suppression / mute / solo switches.
    * **`name` (far end)** — one tab per dialled-in conference. Its **Send** bus
      is exactly what that far end receives (a 1080p frame).
+   The **Audio Mixer** sits underneath the canvas (not in a tab): a channel strip
+   per audio-capable source with a live VU meter, a gain fader, EQ knobs and
+   noise-suppression / mute / solo switches. Drag the splitter between the canvas
+   and the mixer to trade height between them.
 4. In a conference tab, press **Start presentation** to light up a second
    **Presentation** bus — compose it like any other canvas and the far end sees
    *both* streams. **Stop presentation** tears it down.
@@ -116,15 +132,19 @@ cmake --build build -j --target videowall
 
 It is all in [`src/main.cpp`](src/main.cpp), heavily commented:
 
-* `ActiveSource` — one prepared source in the library: its kind, config, **its
-  own `Pulse *`**, the GL texture + CPU frame we paint, and (for a conference)
-  an `OutboundSink`.
+* `ActiveSource` — one prepared source in the library: its kind, **media type**
+  (audio / video / both), config, **its own `Pulse *`**, the GL texture + CPU
+  frame we paint, and (for a conference) an `OutboundSink`. `source_has_video` /
+  `source_has_audio` read the media type to route it to the canvas, the mixer, or
+  both.
 * `Placement` / `Canvas` — a lightweight `{source, x, y, w, h}` appearance, and a
   sized list of them. The same `ActiveSource` can back many placements.
 * `OutboundSink` — a conference's send side: its Send + Presentation canvases,
   the input data-sessions, and the scratch buffers we composite into.
 * `start_source` / `stop_source` — bring a source's Pulse instance up/down, wire
-  its input per kind, and (for a conference) open/close the outbound sessions.
+  its input per kind (a camera or microphone capture device, an RTSP/RTMP stream,
+  a file mix, or a dialled conference), and (for a conference) open/close the
+  outbound sessions.
 * `pump_frame` — pull the latest RGBA frame (self-view, or MAIN for a
   conference) into the source's texture **and** a CPU copy.
 * `composite_canvas` / `push_canvas` / `pump_outbound` — paint a canvas's
@@ -135,6 +155,7 @@ It is all in [`src/main.cpp`](src/main.cpp), heavily commented:
 * `file_picker` — a one-slot wrapper around the ImGui-Addons file browser behind
   the **Browse…** buttons for Image / MP4 sources.
 * `draw_library_rail` / `draw_editable_canvas` / `draw_audio_mixer` /
-  `draw_canvas_tabs` — the switcher-style UI: library thumbnails, drag-to-place
-  canvases, the audio-mixer console, and the tabbed Program / Send /
-  Presentation buses.
+  `draw_canvas_tabs` / `draw_stage` — the switcher-style UI: library thumbnails,
+  fit-to-view drag-to-place canvases, the audio-mixer console, the tabbed Program
+  / Send / Presentation buses, and `draw_stage` which stacks the canvas over the
+  mixer with a draggable splitter between them.

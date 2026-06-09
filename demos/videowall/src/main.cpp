@@ -84,6 +84,7 @@
 enum class SourceKind
 {
     Camera = 0,
+    Microphone,
     Rtsp,
     Rtmp,
     Image,
@@ -92,8 +93,43 @@ enum class SourceKind
 };
 
 static const char * kSourceKindLabels[] = {
-    "Camera", "RTSP stream", "RTMP stream", "Image (jpg/png)", "MP4 file", "Video-conference",
+    "Camera", "Microphone", "RTSP stream", "RTMP stream", "Image (jpg/png)", "MP4 file",
+    "Video-conference",
 };
+
+// ----------------------------------------------------------------------------
+//  Media type - is a source audio, video, or both?
+// ----------------------------------------------------------------------------
+//
+//  A source carries a media type so the UI knows where it belongs: an *audio*
+//  source feeds the audio mixer, a *video* source can be dropped onto a canvas,
+//  and a *both* source does both. The kind picks a sensible default (a
+//  microphone is audio-only, an image is video-only, a conference is both) which
+//  the user can still override in the prepare form.
+// ----------------------------------------------------------------------------
+
+enum class MediaType
+{
+    Video = 0,
+    Audio,
+    Both,
+};
+
+static const char * kMediaTypeLabels[] = { "Video", "Audio", "Both" };
+
+static MediaType default_media_type(SourceKind kind)
+{
+    switch (kind) {
+        case SourceKind::Camera:     return MediaType::Video;
+        case SourceKind::Microphone: return MediaType::Audio;
+        case SourceKind::Rtsp:       return MediaType::Both;
+        case SourceKind::Rtmp:       return MediaType::Both;
+        case SourceKind::Image:      return MediaType::Video;
+        case SourceKind::Mp4:        return MediaType::Both;
+        case SourceKind::Conference: return MediaType::Both;
+    }
+    return MediaType::Video;
+}
 
 // The resolution we send to each conference far end. The video *wall* (Program)
 // is deliberately superwide, but what we push back into a conference must match a
@@ -187,10 +223,12 @@ struct ActiveSource
 {
     int        id   = 0;            // stable identity; placements reference this
     SourceKind kind = SourceKind::Camera;
+    MediaType  media_type = MediaType::Video;  // audio / video / both (routing)
     char       name[64] = "Source";
 
     // ---- per-kind configuration --------------------------------------------
     char camera_name[128] = "";     // empty => system default / first camera
+    char microphone_name[128] = ""; // empty => system default / first microphone
     char file_path[512]   = "";     // image / mp4 path
     char rtsp_url[512]    = "rtsp://";
     int  rtmp_port        = 1935;   // each RTMP source listens on its own port
@@ -278,11 +316,17 @@ struct AppState
     // "Camera" dropdown has something to show before a source is started.
     Pulse * enum_pulse = nullptr;
     std::vector<std::string> camera_names;
+    std::vector<std::string> microphone_names;
 
     // The "Prepare source" staging form. We configure a source here, then
     // "Prepare" starts it and (on success) moves it into the library.
     ActiveSource staging;
     int          staging_kind = 0;
+
+    // Height (in px) of the audio-mixer pane that sits *under* the canvas area.
+    // The user drags the splitter between them to re-balance the two; this is
+    // the mixer's share and the canvas takes whatever is left.
+    float mixer_height = 240.0f;
 };
 
 // ----------------------------------------------------------------------------
@@ -346,6 +390,17 @@ static void on_source_audio_level(void * uc, const PulseAudioLevelMetasList * li
 //  push side from gateway.
 // ----------------------------------------------------------------------------
 
+// Routing helpers driven by a source's media type: an audio source feeds the
+// mixer, a video source feeds the canvases, a "both" source feeds both.
+static bool source_has_video(const ActiveSource & s)
+{
+    return s.media_type == MediaType::Video || s.media_type == MediaType::Both;
+}
+static bool source_has_audio(const ActiveSource & s)
+{
+    return s.media_type == MediaType::Audio || s.media_type == MediaType::Both;
+}
+
 static PulseDataSessionConfig * make_video_output_config()
 {
     // The OUTPUT (pull) side just wants already-decoded RGBA frames; caps are
@@ -375,7 +430,7 @@ static PulseDataSessionConfig * make_rgba_input_config(int w, int h)
 // outbound compositing). Non-blocking; a no-op when nothing is ready yet.
 static void pump_frame(ActiveSource & src)
 {
-    if (!src.pulse) return;
+    if (!src.pulse || !source_has_video(src)) return;
 
     PulseDataSessionFrameData * frame = nullptr;
     pulse_data_session_pull_frame_data(src.pulse, PULSE_MEDIA_VIDEO, &frame,
@@ -483,7 +538,7 @@ static void push_canvas(ActiveSource & conf, PulseMediaContent slot, RgbaImage &
 }
 
 // ----------------------------------------------------------------------------
-//  Device enumeration (for the camera dropdown)
+//  Device enumeration (for the camera / microphone dropdowns)
 // ----------------------------------------------------------------------------
 
 static void refresh_camera_list(AppState & app)
@@ -499,6 +554,23 @@ static void refresh_camera_list(AppState & app)
          d = pulse_device_iterator_next(it)) {
         const char * n = pulse_device_get_name(d);
         app.camera_names.emplace_back(n ? n : "(unnamed)");
+    }
+    pulse_device_iterator_free(it);
+}
+
+static void refresh_microphone_list(AppState & app)
+{
+    app.microphone_names.clear();
+    if (!app.enum_pulse) return;
+
+    PulseDeviceIterator * it = nullptr;
+    pulse_device_iterator_new(app.enum_pulse, PULSE_MEDIA_AUDIO, PULSE_MEDIA_INPUT, &it);
+    if (!it) return;
+    for (const PulseDevice * d = pulse_device_iterator_first(it);
+         d != nullptr;
+         d = pulse_device_iterator_next(it)) {
+        const char * n = pulse_device_get_name(d);
+        app.microphone_names.emplace_back(n ? n : "(unnamed)");
     }
     pulse_device_iterator_free(it);
 }
@@ -535,8 +607,39 @@ static PulseError connect_camera(ActiveSource & src)
     return err;
 }
 
-// Acquire a still image / mp4 as a video-mix input and connect a one-input mix
-// onto MAIN, so the source's self-view previews it. Returns the input id (which
+// Bind a microphone (by name, falling back to the system default / first one) to
+// a source's own Pulse instance as the MAIN audio input. With a real capture
+// device attached, Pulse's input audio-level callback finally has a live signal
+// to report - which is what drives this source's VU meter in the mixer.
+static PulseError connect_microphone(ActiveSource & src)
+{
+    PulseDeviceIterator * it = nullptr;
+    pulse_device_iterator_new(src.pulse, PULSE_MEDIA_AUDIO, PULSE_MEDIA_INPUT, &it);
+    if (!it) return PULSE_ERROR_NOT_CONFIGURED;
+
+    const PulseDevice * chosen   = nullptr;
+    const PulseDevice * fallback = nullptr;
+    for (const PulseDevice * d = pulse_device_iterator_first(it);
+         d != nullptr;
+         d = pulse_device_iterator_next(it)) {
+        if (!fallback) fallback = d;
+        if (pulse_device_is_system_default(d) && !chosen) chosen = d;
+        const char * n = pulse_device_get_name(d);
+        if (src.microphone_name[0] != '\0' && n && std::strcmp(n, src.microphone_name) == 0) {
+            chosen = d;
+            break;
+        }
+    }
+    if (!chosen) chosen = fallback;
+
+    PulseError err = PULSE_ERROR_NOT_CONFIGURED;
+    if (chosen) {
+        err = pulse_device_session_connect_device(src.pulse, chosen,
+                                                  PULSE_MEDIA_CONTENT_MAIN);
+    }
+    pulse_device_iterator_free(it);
+    return err;
+}
 // must be released on stop) via src.mix_input.
 static PulseError connect_file_via_mix(ActiveSource & src, bool loop)
 {
@@ -678,6 +781,14 @@ static void start_source(ActiveSource & src)
             err = connect_camera(src);
             break;
 
+        case SourceKind::Microphone:
+            // An audio-only source: connect a capture device and let the audio
+            // level callback (registered below) feed its mixer strip. There is
+            // no video to render.
+            src.render_content = PULSE_MEDIA_CONTENT_SELFVIEW;
+            err = connect_microphone(src);
+            break;
+
         case SourceKind::Rtsp: {
             src.render_content = PULSE_MEDIA_CONTENT_SELFVIEW;
             if (src.rtsp_url[0] == '\0') { err = PULSE_ERROR_INVALID_PARAMETER; break; }
@@ -782,14 +893,18 @@ static void start_source(ActiveSource & src)
 
     // Open the RGBA output we will pull frames from, and a GL texture to hold
     // them. Pulse starts feeding the session as soon as media is available.
-    glGenTextures(1, &src.texture);
-    glBindTexture(GL_TEXTURE_2D, src.texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    // Audio-only sources (e.g. a microphone) have no video to pull, so we skip
+    // the texture + output session entirely for them.
+    if (source_has_video(src)) {
+        glGenTextures(1, &src.texture);
+        glBindTexture(GL_TEXTURE_2D, src.texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-    PulseDataSessionConfig * dcfg = make_video_output_config();
-    pulse_data_session_connect_output(src.pulse, dcfg, src.render_content);
-    pulse_data_session_config_free(dcfg);
+        PulseDataSessionConfig * dcfg = make_video_output_config();
+        pulse_data_session_connect_output(src.pulse, dcfg, src.render_content);
+        pulse_data_session_config_free(dcfg);
+    }
 
     // Subscribe to this instance's input audio levels so the mixer's VU meter
     // for this strip has data. Best-effort: a source with no audio simply reads
@@ -823,14 +938,19 @@ static void stop_source(ActiveSource & src)
     }
     src.vu = 0.0f;
 
-    // Disconnect the data-session output (mirrors connect_output).
-    pulse_data_session_disconnect(src.pulse, PULSE_MEDIA_VIDEO, PULSE_MEDIA_OUTPUT,
-                                  src.render_content);
+    // Disconnect the data-session output (mirrors connect_output). Only opened
+    // for video-capable sources.
+    if (source_has_video(src))
+        pulse_data_session_disconnect(src.pulse, PULSE_MEDIA_VIDEO, PULSE_MEDIA_OUTPUT,
+                                      src.render_content);
 
     switch (src.kind) {
         case SourceKind::Camera:
             pulse_device_session_disconnect_main_video(src.pulse, PULSE_MEDIA_CONTENT_MAIN,
                                                        PULSE_MEDIA_INPUT);
+            break;
+        case SourceKind::Microphone:
+            pulse_device_session_disconnect_main_audio(src.pulse);
             break;
         case SourceKind::Rtsp:
             if (src.rtsp_session != 0) {
@@ -999,6 +1119,21 @@ static void draw_kind_config(AppState & app, ActiveSource & src)
             if (ImGui::Button("Rescan cameras")) refresh_camera_list(app);
             break;
         }
+        case SourceKind::Microphone: {
+            std::string current = src.microphone_name[0] ? src.microphone_name : "(system default)";
+            if (ImGui::BeginCombo("Microphone", current.c_str())) {
+                if (ImGui::Selectable("(system default)", src.microphone_name[0] == '\0'))
+                    src.microphone_name[0] = '\0';
+                for (const std::string & n : app.microphone_names) {
+                    bool sel = (std::strcmp(n.c_str(), src.microphone_name) == 0);
+                    if (ImGui::Selectable(n.c_str(), sel))
+                        std::snprintf(src.microphone_name, sizeof(src.microphone_name), "%s", n.c_str());
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::Button("Rescan microphones")) refresh_microphone_list(app);
+            break;
+        }
         case SourceKind::Rtsp:
             ImGui::InputText("RTSP URL", src.rtsp_url, sizeof(src.rtsp_url));
             break;
@@ -1057,9 +1192,20 @@ static void draw_library_rail(AppState & app)
     if (ImGui::Combo("Kind", &app.staging_kind, kSourceKindLabels,
                      IM_ARRAYSIZE(kSourceKindLabels))) {
         app.staging.kind = static_cast<SourceKind>(app.staging_kind);
+        // Each kind has a natural default media type (a microphone is audio, an
+        // image is video, a conference is both); reset to it when the kind
+        // changes so the routing makes sense out of the box.
+        app.staging.media_type = default_media_type(app.staging.kind);
     }
     app.staging.kind = static_cast<SourceKind>(app.staging_kind);
     ImGui::InputText("Name", app.staging.name, sizeof(app.staging.name));
+
+    // What is this source - audio, video, or both? This decides where it shows
+    // up: audio in the mixer, video on the canvases, both in both.
+    int media_idx = static_cast<int>(app.staging.media_type);
+    if (ImGui::Combo("Media", &media_idx, kMediaTypeLabels, IM_ARRAYSIZE(kMediaTypeLabels)))
+        app.staging.media_type = static_cast<MediaType>(media_idx);
+
     // Scope the per-kind widgets so they never collide with the identical
     // widgets the inspector draws for the selected source (otherwise preparing
     // a second source of the same kind trips Dear ImGui's duplicate-ID check).
@@ -1073,8 +1219,10 @@ static void draw_library_rail(AppState & app)
         auto src = std::make_unique<ActiveSource>();
         ActiveSource & s = *src;
         s.kind = app.staging.kind;
+        s.media_type = app.staging.media_type;
         std::snprintf(s.name, sizeof(s.name), "%s", app.staging.name);
-        std::memcpy(s.camera_name,   app.staging.camera_name,   sizeof(s.camera_name));
+        std::memcpy(s.camera_name,     app.staging.camera_name,     sizeof(s.camera_name));
+        std::memcpy(s.microphone_name, app.staging.microphone_name, sizeof(s.microphone_name));
         std::memcpy(s.file_path,     app.staging.file_path,     sizeof(s.file_path));
         std::memcpy(s.rtsp_url,      app.staging.rtsp_url,      sizeof(s.rtsp_url));
         s.rtmp_port = app.staging.rtmp_port;
@@ -1108,17 +1256,23 @@ static void draw_library_rail(AppState & app)
         ImGui::PushID(s.id);
 
         // A live thumbnail doubling as the drag handle and selection toggle.
+        // Audio-only sources have no picture, so show a labelled button instead;
+        // only video-capable sources can be dragged onto a canvas.
         ImVec2 size(thumb_w, thumb_h);
         bool clicked;
         if (s.texture && s.tex_w > 0) {
             clicked = ImGui::ImageButton("thumb", (ImTextureID)(uintptr_t)s.texture, size,
                                          ImVec2(0, 0), ImVec2(1, 1));
+        } else if (!source_has_video(s)) {
+            clicked = ImGui::Button("(audio)", size);
         } else {
             clicked = ImGui::Button("(no signal)", size);
         }
         if (clicked) app.selected_source = s.id;
 
-        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+        // Only video-capable sources may be dragged onto a canvas; an audio-only
+        // source lives solely in the mixer below.
+        if (source_has_video(s) && ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
             ImGui::SetDragDropPayload(kSourcePayload, &s.id, sizeof(int));
             ImGui::Text("%s", s.name);
             ImGui::EndDragDropSource();
@@ -1130,8 +1284,9 @@ static void draw_library_rail(AppState & app)
             ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "%s",
                                status_to_string(s.conn_status.load()));
         else
-            ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "%s",
-                               kSourceKindLabels[static_cast<int>(s.kind)]);
+            ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "%s  (%s)",
+                               kSourceKindLabels[static_cast<int>(s.kind)],
+                               kMediaTypeLabels[static_cast<int>(s.media_type)]);
 
         ImGui::PopID();
         if (++col % per_row != 0) ImGui::SameLine();
@@ -1142,7 +1297,8 @@ static void draw_library_rail(AppState & app)
     ActiveSource * sel = (app.selected_source >= 0) ? find_source(app, app.selected_source) : nullptr;
     if (sel) {
         ImGui::SeparatorText("Selected source");
-        ImGui::Text("%s  -  %s", sel->name, kSourceKindLabels[static_cast<int>(sel->kind)]);
+        ImGui::Text("%s  -  %s  (%s)", sel->name, kSourceKindLabels[static_cast<int>(sel->kind)],
+                    kMediaTypeLabels[static_cast<int>(sel->media_type)]);
         ImGui::PushID("inspector");
         ImGui::BeginDisabled(true);
         draw_kind_config(app, *sel);
@@ -1169,12 +1325,30 @@ static void draw_editable_canvas(AppState & app, Canvas & canvas, const char * i
 {
     ImGui::PushID(id_str);
 
-    ImGui::BeginChild("canvas", ImVec2(0, 360), true, ImGuiWindowFlags_HorizontalScrollbar);
+    // Reserve a strip at the bottom for the selected-placement inspector so the
+    // canvas itself takes the rest of the available height. The canvas then
+    // scales to fit *both* width and height, so even a tall 1920x1080 wall is
+    // fully visible at once - no scrolling.
+    const float inspector_h = 96.0f;
+    float region_h = ImGui::GetContentRegionAvail().y;
+    float canvas_child_h = region_h - inspector_h;
+    if (canvas_child_h < 120.0f) canvas_child_h = 120.0f;
+
+    ImGui::BeginChild("canvas", ImVec2(0, canvas_child_h), true);
 
     const float avail_w = ImGui::GetContentRegionAvail().x;
-    const float scale   = (canvas.w > 0) ? (avail_w / static_cast<float>(canvas.w)) : 1.0f;
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const float avail_h = ImGui::GetContentRegionAvail().y;
+    // Fit-to-box: scale by whichever axis is the tighter fit so the whole canvas
+    // shows. Then centre it within the leftover space.
+    const float scale_w = (canvas.w > 0) ? (avail_w / static_cast<float>(canvas.w)) : 1.0f;
+    const float scale_h = (canvas.h > 0) ? (avail_h / static_cast<float>(canvas.h)) : 1.0f;
+    const float scale   = std::min(scale_w, scale_h);
     const ImVec2 canvas_px(canvas.w * scale, canvas.h * scale);
+
+    const ImVec2 child_origin = ImGui::GetCursorScreenPos();
+    const ImVec2 origin(child_origin.x + std::max(0.0f, (avail_w - canvas_px.x) * 0.5f),
+                        child_origin.y + std::max(0.0f, (avail_h - canvas_px.y) * 0.5f));
+    ImGui::SetCursorScreenPos(origin);
 
     ImDrawList * dl = ImGui::GetWindowDrawList();
 
@@ -1191,24 +1365,28 @@ static void draw_editable_canvas(AppState & app, Canvas & canvas, const char * i
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload * pl = ImGui::AcceptDragDropPayload(kSourcePayload)) {
             int sid = *static_cast<const int *>(pl->Data);
-            const ImVec2 m = ImGui::GetMousePos();
-            Placement p;
-            p.source_id = sid;
-            p.x = (m.x - origin.x) / scale;
-            p.y = (m.y - origin.y) / scale;
-            p.w = 480.0f;
-            p.h = 270.0f;
-            // Adopt the source's native aspect ratio (so the resize handle keeps
-            // it). Fall back to 16:9 until the first frame has been pulled.
-            if (ActiveSource * s = find_source(app, sid);
-                s && s->frame_cpu.w > 0 && s->frame_cpu.h > 0) {
-                p.aspect = static_cast<float>(s->frame_cpu.w) / s->frame_cpu.h;
-                p.h = p.w / p.aspect;
+            ActiveSource * s = find_source(app, sid);
+            // Only video-capable sources belong on a canvas; an audio-only
+            // source is ignored here (it lives in the mixer instead).
+            if (s && source_has_video(*s)) {
+                const ImVec2 m = ImGui::GetMousePos();
+                Placement p;
+                p.source_id = sid;
+                p.x = (m.x - origin.x) / scale;
+                p.y = (m.y - origin.y) / scale;
+                p.w = 480.0f;
+                p.h = 270.0f;
+                // Adopt the source's native aspect ratio (so the resize handle
+                // keeps it). Fall back to 16:9 until the first frame arrives.
+                if (s->frame_cpu.w > 0 && s->frame_cpu.h > 0) {
+                    p.aspect = static_cast<float>(s->frame_cpu.w) / s->frame_cpu.h;
+                    p.h = p.w / p.aspect;
+                }
+                if (p.x < 0) p.x = 0;
+                if (p.y < 0) p.y = 0;
+                canvas.items.push_back(p);
+                canvas.selected = static_cast<int>(canvas.items.size()) - 1;
             }
-            if (p.x < 0) p.x = 0;
-            if (p.y < 0) p.y = 0;
-            canvas.items.push_back(p);
-            canvas.selected = static_cast<int>(canvas.items.size()) - 1;
         }
         ImGui::EndDragDropTarget();
     }
@@ -1429,15 +1607,23 @@ static bool mixer_switch(const char * label, bool * on, ImU32 on_col, float avai
 
 static void draw_audio_mixer(AppState & app)
 {
-    ImGui::TextWrapped("One channel strip per library source. The VU meters are live - they "
-                       "read each source's input audio levels via Pulse's "
-                       "pulse_register_device_audio_level_callback. The gain fader, EQ knobs and "
-                       "the noise-suppression / mute / solo switches are wired into the UI now so "
-                       "the matching Pulse APIs can be plumbed in later.");
+    ImGui::TextWrapped("One channel strip per audio-capable source (Audio or Both). The VU meters "
+                       "are live - they read each source's input audio levels via Pulse's "
+                       "pulse_register_device_audio_level_callback, so a Microphone source shows "
+                       "real activity. The gain fader, EQ knobs and the noise-suppression / mute / "
+                       "solo switches are wired into the UI now so the matching Pulse APIs can be "
+                       "plumbed in later.");
     ImGui::Separator();
 
-    if (app.library.empty()) {
-        ImGui::TextDisabled("No sources yet - prepare one from the library on the left.");
+    // Count audio-capable sources so we can show a helpful hint when there are
+    // none (a video-only library has nothing to mix).
+    int audio_sources = 0;
+    for (auto & up : app.library)
+        if (source_has_audio(*up)) ++audio_sources;
+
+    if (audio_sources == 0) {
+        ImGui::TextDisabled("No audio sources yet - prepare a Microphone (or an Audio/Both source) "
+                            "from the library on the left.");
         return;
     }
 
@@ -1447,6 +1633,7 @@ static void draw_audio_mixer(AppState & app)
     int idx = 0;
     for (auto & up : app.library) {
         ActiveSource & s = *up;
+        if (!source_has_audio(s)) continue;   // video-only sources are not mixed
         ImGui::PushID(s.id);
         if (idx++ > 0) ImGui::SameLine();
 
@@ -1522,12 +1709,6 @@ static void draw_canvas_tabs(AppState & app)
         ImGui::EndTabItem();
     }
 
-    // ---- Audio mixer tab ---------------------------------------------------
-    if (ImGui::BeginTabItem("Audio Mixer")) {
-        draw_audio_mixer(app);
-        ImGui::EndTabItem();
-    }
-
     // ---- One tab per dialled-in conference: its Send / Presentation buses ---
     for (auto & up : app.library) {
         ActiveSource & s = *up;
@@ -1580,6 +1761,60 @@ static void draw_canvas_tabs(AppState & app)
 }
 
 // ----------------------------------------------------------------------------
+//  The stage: canvas area on top, audio mixer underneath, a draggable splitter
+//  between them. The audio mixer used to be a tab; it now lives below the
+//  canvas so you can watch the wall and ride the faders at the same time, and
+//  the splitter lets you trade height between the two to taste.
+// ----------------------------------------------------------------------------
+
+static void draw_stage(AppState & app)
+{
+    const float splitter_h = 8.0f;
+    const float min_canvas  = 300.0f;   // keep the canvas + its inspector usable
+    const float min_mixer   = 90.0f;    // keep at least the meters visible
+
+    const float avail_h = ImGui::GetContentRegionAvail().y;
+
+    // Clamp the mixer's share so neither pane collapses.
+    float max_mixer = avail_h - splitter_h - min_canvas;
+    if (max_mixer < min_mixer) max_mixer = min_mixer;
+    if (app.mixer_height < min_mixer) app.mixer_height = min_mixer;
+    if (app.mixer_height > max_mixer) app.mixer_height = max_mixer;
+
+    const float canvas_h = avail_h - splitter_h - app.mixer_height;
+
+    // ---- top: the canvas tabs ----------------------------------------------
+    ImGui::BeginChild("canvas_pane", ImVec2(0, canvas_h), false);
+    draw_canvas_tabs(app);
+    ImGui::EndChild();
+
+    // ---- the draggable splitter --------------------------------------------
+    ImGui::InvisibleButton("vsplitter", ImVec2(-1.0f, splitter_h));
+    const bool split_active = ImGui::IsItemActive();
+    if (ImGui::IsItemHovered() || split_active)
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+    if (split_active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        // Dragging the bar down shrinks the mixer; dragging up grows it.
+        app.mixer_height -= ImGui::GetIO().MouseDelta.y;
+        if (app.mixer_height < min_mixer) app.mixer_height = min_mixer;
+        if (app.mixer_height > max_mixer) app.mixer_height = max_mixer;
+    }
+    {
+        const ImVec2 p0 = ImGui::GetItemRectMin();
+        const ImVec2 p1 = ImGui::GetItemRectMax();
+        const float  cy = (p0.y + p1.y) * 0.5f;
+        ImU32 col = split_active ? IM_COL32(90, 200, 255, 255) : IM_COL32(90, 90, 110, 255);
+        ImGui::GetWindowDrawList()->AddLine(ImVec2(p0.x, cy), ImVec2(p1.x, cy), col, 2.0f);
+    }
+
+    // ---- bottom: the audio mixer -------------------------------------------
+    ImGui::BeginChild("mixer_pane", ImVec2(0, app.mixer_height), true);
+    ImGui::SeparatorText("Audio Mixer");
+    draw_audio_mixer(app);
+    ImGui::EndChild();
+}
+
+// ----------------------------------------------------------------------------
 //  main()
 // ----------------------------------------------------------------------------
 
@@ -1621,11 +1856,16 @@ int main()
 
     AppState app;
     app.staging.kind = SourceKind::Camera;
+    app.staging.media_type = default_media_type(SourceKind::Camera);
     std::snprintf(app.staging.name, sizeof(app.staging.name), "Source 1");
-    // A throwaway Pulse instance whose only job is to enumerate cameras for the
-    // UI. Real media always flows through the per-source instances.
+    // A throwaway Pulse instance whose only job is to enumerate capture devices
+    // (cameras + microphones) for the UI. Real media always flows through the
+    // per-source instances.
     app.enum_pulse = pulse_new();
-    if (app.enum_pulse) refresh_camera_list(app);
+    if (app.enum_pulse) {
+        refresh_camera_list(app);
+        refresh_microphone_list(app);
+    }
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -1656,7 +1896,7 @@ int main()
         ImGui::SameLine();
 
         ImGui::BeginChild("stage", ImVec2(0, 0), false);
-        draw_canvas_tabs(app);
+        draw_stage(app);
         ImGui::EndChild();
 
         ImGui::End();
