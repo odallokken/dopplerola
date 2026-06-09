@@ -640,6 +640,9 @@ static PulseError connect_microphone(ActiveSource & src)
     pulse_device_iterator_free(it);
     return err;
 }
+
+// Acquire a still image / mp4 as a video-mix input and connect a one-input mix
+// onto MAIN, so the source's self-view previews it. Returns the input id (which
 // must be released on stop) via src.mix_input.
 static PulseError connect_file_via_mix(ActiveSource & src, bool loop)
 {
