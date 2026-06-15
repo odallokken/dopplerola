@@ -103,11 +103,16 @@ bool UdpRtpBridge::open(uint16_t local_port,
     // Use the address family of the remote for the socket so v4 and v6
     // remotes both work without dual-stack contortions.
     const int family = remote.ss_family;
-    int sock = ::socket(family, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
+    int sock = ::socket(family, SOCK_DGRAM, IPPROTO_UDP);
     if (sock < 0) {
         set_error(std::string("socket() failed: ") + std::strerror(errno));
         return false;
     }
+
+    // Set FD_CLOEXEC via fcntl rather than the SOCK_CLOEXEC socket() flag,
+    // which is a Linux extension and not available on macOS/BSD.
+    int sock_fdflags = ::fcntl(sock, F_GETFD, 0);
+    if (sock_fdflags >= 0) ::fcntl(sock, F_SETFD, sock_fdflags | FD_CLOEXEC);
 
     // Allow quick restarts on the same port (handy during development).
     int one = 1;
