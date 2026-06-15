@@ -102,6 +102,11 @@ macro(pulse_declare_imgui)
             ${imgui_SOURCE_DIR}
             ${imgui_SOURCE_DIR}/backends)
         target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
+        # macOS deprecates every OpenGL symbol; silence the backend's warnings so
+        # the shared imgui lib builds cleanly there too.
+        if(APPLE)
+            target_compile_definitions(imgui PUBLIC GL_SILENCE_DEPRECATION)
+        endif()
     endif()
 endmacro()
 

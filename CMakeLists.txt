@@ -44,6 +44,7 @@ option(BUILD_DOPPLER     "Build the doppler video-call demo"                ON)
 option(BUILD_GATEWAY     "Build the pulse_gateway two-conference bridge"    ON)
 option(BUILD_PEXNINJA    "Build the larger pexninja reference client"       OFF)
 option(BUILD_DOPPLER_SIP "Build the SIP-signalling demo (needs PJSIP)"      OFF)
+option(BUILD_VIDEOWALL   "Build the videowall multi-Pulse compositor"       ON)
 
 if(BUILD_DOPPLER)
     add_subdirectory(demos/doppler)
@@ -59,4 +60,8 @@ endif()
 
 if(BUILD_DOPPLER_SIP)
     add_subdirectory(demos/sip)
+endif()
+
+if(BUILD_VIDEOWALL)
+    add_subdirectory(demos/videowall)
 endif()

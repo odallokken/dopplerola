@@ -8,3 +8,6 @@ demos/pexninja/msvc/.vs
 # Dev scratch / run logs
 run.log
 run_*.txt
+
+# ImGui per-user window layout state
+imgui.ini
