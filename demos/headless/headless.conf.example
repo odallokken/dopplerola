@@ -1,11 +1,18 @@
 # ---------------------------------------------------------------------------
 # pulse-headless — configuration
 #
-# Install as /etc/pulse-headless.conf. The file may contain a meeting-room PIN,
-# so keep it readable only by the account the service runs as:
+# ./install.sh writes a filled-in copy of this file to /etc/pulse-headless.conf
+# and never overwrites it afterwards, so your settings survive upgrades.
 #
-#     sudo install -o pulse -g pulse -m 600 headless.conf.example \
-#          /etc/pulse-headless.conf
+# To dial another meeting room later, just edit the installed file and save it:
+#
+#     sudo nano /etc/pulse-headless.conf
+#
+# The running client notices the change within a couple of seconds, leaves the
+# old room and joins the new one. No restart, no reboot.
+#
+# The file may contain a meeting-room PIN, so it is kept readable only by the
+# account the service runs as (mode 600, owner 'pulse').
 #
 # Format: "key = value", '#' starts a comment, keys are case-insensitive.
 # ---------------------------------------------------------------------------

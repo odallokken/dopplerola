@@ -57,6 +57,8 @@
 #include <string>
 #include <thread>
 
+#include <sys/stat.h>
+
 // The single header that pulls in the full Pulse API surface.
 #include <pexpulse/pulse.h>
 
@@ -82,6 +84,11 @@ constexpr auto kStatsInterval = std::chrono::seconds(5);
 
 // How often we re-try attaching optional audio devices that were not there.
 constexpr auto kAudioRetryInterval = std::chrono::seconds(30);
+
+// How often we look at the config file's timestamp. Editing the file is how
+// the operator moves the box to a different meeting room, so this wants to be
+// responsive without stat()ing in a tight loop.
+constexpr auto kConfigCheckInterval = std::chrono::seconds(2);
 
 // ----------------------------------------------------------------------------
 //  Logging
@@ -141,8 +148,17 @@ extern "C" void on_signal(int /*signum*/)
 
 struct App
 {
-    headless::Config cfg;
-    Pulse *          pulse = nullptr;
+    // The config file, and the settings read from it. `cfg` is re-read whenever
+    // the file changes on disk, so the few Pulse callbacks that need a value
+    // out of it take the mutex; the supervisor loop works from its own
+    // snapshot. `verbose` is mirrored as an atomic because the log callback is
+    // far too hot to take a lock.
+    std::string       config_path;
+    std::mutex        cfg_mutex;
+    headless::Config  cfg;
+    std::atomic<bool> verbose{false};
+
+    Pulse * pulse = nullptr;
 
     // Written from Pulse callback threads, read by the supervisor loop.
     std::atomic<int>  conference_status{PULSE_CONNECTION_STATUS_DISCONNECTED};
@@ -150,10 +166,12 @@ struct App
     std::atomic<bool> video_devices_changed{true};  // true => rescan on first tick
     std::atomic<bool> camera_error{false};
 
-    // Camera bookkeeping (supervisor thread only).
-    bool          camera_attached = false;
-    PulseDeviceID camera_id       = 0;
-    std::string   camera_name;
+    // Camera bookkeeping. Written by the supervisor loop; `camera_attached` and
+    // `camera_id` are also read by the device-error callback on a Pulse thread,
+    // hence atomic.
+    std::atomic<bool>          camera_attached{false};
+    std::atomic<PulseDeviceID> camera_id{0};
+    std::string                camera_name;  // supervisor thread only
 
     // Optional audio bookkeeping (supervisor thread only).
     bool microphone_attached = false;
@@ -201,7 +219,7 @@ void on_async_result(const PulseError err, void * user_context)
 void on_progress(const PulseOperationProgressInfo * info, void * user_context)
 {
     auto * app = static_cast<App *>(user_context);
-    if (app->cfg.verbose)
+    if (app->verbose.load())
         LOG_INFO("[%3d%%] %s", static_cast<int>(info->progress * 100.0f),
                  info->desc ? info->desc : "");
 }
@@ -215,16 +233,21 @@ bool on_pin_code_request(bool guest_pin_required, const PulseSetPinCode * set_pi
     if (set_pin == nullptr || set_pin->func == nullptr)
         return false;
 
-    const bool have_pin = !app->cfg.pin.empty();
-    if (guest_pin_required && !have_pin) {
+    std::string pin;
+    {
+        std::lock_guard<std::mutex> lock(app->cfg_mutex);
+        pin = app->cfg.pin;
+    }
+
+    if (guest_pin_required && pin.empty()) {
         LOG_ERROR("the meeting room requires a PIN but none is set in the config "
                   "file (add 'pin = <code>')");
         return false;
     }
 
     LOG_INFO("supplying %s from the config file",
-             have_pin ? "the configured PIN" : "an empty PIN (host/none required)");
-    set_pin->func(set_pin->context, have_pin ? app->cfg.pin.c_str() : nullptr);
+             pin.empty() ? "an empty PIN (host/none required)" : "the configured PIN");
+    set_pin->func(set_pin->context, pin.empty() ? nullptr : pin.c_str());
     return true;
 }
 
@@ -246,7 +269,7 @@ void on_device_error(void * user_context, PulseDeviceID device_id, PulseError de
 {
     auto * app = static_cast<App *>(user_context);
     LOG_WARN("device %u reported an error: %s", device_id, pulse_strerror(device_error));
-    if (app->camera_attached && device_id == app->camera_id)
+    if (app->camera_attached.load() && device_id == app->camera_id.load())
         app->camera_error.store(true);
 }
 
@@ -257,7 +280,7 @@ void on_pulse_log(void * user_context, PulseDebugLevel level, const char * categ
 {
     const auto * app = static_cast<const App *>(user_context);
     const PulseDebugLevel threshold =
-        (app != nullptr && app->cfg.verbose) ? PULSE_LEVEL_INFO : PULSE_LEVEL_WARNING;
+        (app != nullptr && app->verbose.load()) ? PULSE_LEVEL_INFO : PULSE_LEVEL_WARNING;
     if (level > threshold)
         return;
 
@@ -317,10 +340,9 @@ PulseDevice * find_device(Pulse * pulse, PulseMediaType type, PulseMediaDirectio
 // session is torn down first: after a USB re-enumeration the old session is
 // stale, and connecting on top of it is what leaves you in the "camera is
 // there but no picture ever arrives" state.
-bool attach_camera(App & app)
+bool attach_camera(App & app, const std::string & want)
 {
-    PulseDevice * camera = find_device(app.pulse, PULSE_MEDIA_VIDEO, PULSE_MEDIA_INPUT,
-                                       app.cfg.camera);
+    PulseDevice * camera = find_device(app.pulse, PULSE_MEDIA_VIDEO, PULSE_MEDIA_INPUT, want);
     if (camera == nullptr)
         return false;
 
@@ -338,9 +360,9 @@ bool attach_camera(App & app)
         return false;
     }
 
-    app.camera_attached = true;
-    app.camera_id       = id;
-    app.camera_name     = (name != nullptr) ? name : "";
+    app.camera_name = (name != nullptr) ? name : "";
+    app.camera_id.store(id);
+    app.camera_attached.store(true);
     app.camera_error.store(false);
     LOG_INFO("camera attached: '%s' (id %u)", app.camera_name.c_str(), id);
 
@@ -391,23 +413,23 @@ bool attach_audio_device(App & app, PulseMediaDirection direction, const std::st
 //  Conference
 // ----------------------------------------------------------------------------
 
-bool start_connect(App & app)
+bool start_connect(App & app, const headless::Config & cfg)
 {
-    PulseRestConnectionConfig cfg{};
-    cfg.server_address  = app.cfg.host.c_str();
-    cfg.conference_name = app.cfg.conference.c_str();
-    cfg.display_name    = app.cfg.display_name.c_str();
-    cfg.pin_code        = app.cfg.pin.empty() ? nullptr : app.cfg.pin.c_str();
+    PulseRestConnectionConfig conn{};
+    conn.server_address  = cfg.host.c_str();
+    conn.conference_name = cfg.conference.c_str();
+    conn.display_name    = cfg.display_name.c_str();
+    conn.pin_code        = cfg.pin.empty() ? nullptr : cfg.pin.c_str();
 
     PulseAsyncOperationResultCallbackConfig result_cb{on_async_result, &app};
     PulseOperationProgressCallbackConfig    progress_cb{on_progress, &app};
 
-    LOG_INFO("dialling %s via %s as '%s'", app.cfg.conference.c_str(), app.cfg.host.c_str(),
-             app.cfg.display_name.c_str());
+    LOG_INFO("dialling %s via %s as '%s'", cfg.conference.c_str(), cfg.host.c_str(),
+             cfg.display_name.c_str());
 
     app.connect_in_flight.store(true);
     const PulseError err =
-        pulse_connect_with_rest_async(app.pulse, &cfg, &result_cb, &progress_cb);
+        pulse_connect_with_rest_async(app.pulse, &conn, &result_cb, &progress_cb);
     if (err != PULSE_SUCCESS) {
         app.connect_in_flight.store(false);
         LOG_WARN("pulse_connect_with_rest_async failed: %s", pulse_strerror(err));
@@ -420,9 +442,13 @@ bool start_connect(App & app)
 //  Supervisor
 // ----------------------------------------------------------------------------
 //
-//  One loop, three jobs: keep a camera attached, keep the call up, and notice
-//  when video silently stops flowing. Each job has its own "not before" time
-//  point so a failing one backs off without stalling the others.
+//  One loop, four jobs: keep a camera attached, keep the call up, notice when
+//  video silently stops flowing, and pick up edits to the config file. Each job
+//  has its own "not before" time point so a failing one backs off without
+//  stalling the others.
+//
+//  The supervisor owns a *snapshot* of the config (`cfg_`). The shared copy in
+//  App is only touched here, under its mutex, when the file on disk changes.
 // ----------------------------------------------------------------------------
 
 class Supervisor
@@ -430,15 +456,18 @@ class Supervisor
 public:
     explicit Supervisor(App & app)
         : app_(app)
+        , cfg_(app.cfg)
         , started_(Clock::now())
         , camera_backoff_(app.cfg.retry_delay_secs)
         , connect_backoff_(app.cfg.retry_delay_secs)
     {
+        remember_config_stamp();
     }
 
     void tick()
     {
         const TimePoint now = Clock::now();
+        reload_config_if_changed(now);
         ensure_camera(now);
         ensure_audio(now);
         ensure_call(now);
@@ -449,9 +478,114 @@ private:
     int bump(int & backoff) const
     {
         const int current = backoff;
-        backoff = std::min(backoff * 2, app_.cfg.max_retry_delay_secs);
+        backoff = std::min(backoff * 2, cfg_.max_retry_delay_secs);
         return current;
     }
+
+    // Note the config file's mtime + size so we can spot an edit later.
+    void remember_config_stamp()
+    {
+        struct stat st{};
+        if (::stat(app_.config_path.c_str(), &st) == 0) {
+            config_mtime_ = st.st_mtime;
+            config_size_  = st.st_size;
+        }
+    }
+
+    // The operator changes meeting rooms by editing the config file, so watch
+    // it and act on the change: no restart, no service commands. A file that is
+    // mid-edit (or momentarily missing while an editor renames it into place)
+    // simply fails to parse, is logged, and the previous settings stay live.
+    void reload_config_if_changed(const TimePoint & now)
+    {
+        if (now < next_config_check_)
+            return;
+        next_config_check_ = now + kConfigCheckInterval;
+
+        struct stat st{};
+        if (::stat(app_.config_path.c_str(), &st) != 0)
+            return;
+        if (st.st_mtime == config_mtime_ && st.st_size == config_size_)
+            return;
+
+        // Record the new stamp either way, so a broken file is complained
+        // about once rather than every two seconds.
+        config_mtime_ = st.st_mtime;
+        config_size_  = st.st_size;
+
+        headless::Config fresh;
+        std::string      error;
+        if (!headless::load_config(app_.config_path, fresh, error)) {
+            LOG_ERROR("config reload failed: %s (keeping the previous settings)",
+                      error.c_str());
+            return;
+        }
+
+        const bool room_changed   = fresh.host != cfg_.host
+                                    || fresh.conference != cfg_.conference
+                                    || fresh.pin != cfg_.pin
+                                    || fresh.display_name != cfg_.display_name;
+        const bool camera_changed = fresh.camera != cfg_.camera;
+        const bool audio_changed  = fresh.microphone != cfg_.microphone
+                                    || fresh.speaker != cfg_.speaker;
+
+        {
+            std::lock_guard<std::mutex> lock(app_.cfg_mutex);
+            app_.cfg = fresh;
+        }
+        app_.verbose.store(fresh.verbose);
+        cfg_ = fresh;
+        pulse_options_set_verbose_logging(app_.pulse, fresh.verbose);
+
+        LOG_INFO("config file changed - reloaded");
+
+        if (camera_changed) {
+            LOG_INFO("camera selection changed to '%s' - re-attaching", cfg_.camera.c_str());
+            // Tear the old session down here as well: switching to "none" must
+            // actually stop the picture, not just stop supervising it.
+            pulse_device_session_disconnect_main_video(app_.pulse, PULSE_MEDIA_CONTENT_MAIN,
+                                                      PULSE_MEDIA_INPUT);
+            app_.camera_attached.store(false);
+            camera_disabled_logged_ = false;
+            camera_backoff_      = cfg_.retry_delay_secs;
+            next_camera_attempt_ = now;
+        }
+
+        if (audio_changed) {
+            // Rebuild both directions from scratch: the audio session API only
+            // offers an all-or-nothing disconnect for the MAIN content.
+            pulse_device_session_disconnect_main_audio(app_.pulse);
+            app_.microphone_attached = false;
+            app_.speaker_attached    = false;
+            next_audio_attempt_      = now;
+        }
+
+        if (room_changed) {
+            LOG_INFO("meeting room changed - moving to %s via %s", cfg_.conference.c_str(),
+                     cfg_.host.c_str());
+            connect_backoff_      = cfg_.retry_delay_secs;
+            next_connect_attempt_ = now;
+            leave_call();
+        }
+    }
+
+    // Drop the current call (if any) so ensure_call() redials with the new
+    // settings. Harmless when we are already disconnected.
+    void leave_call()
+    {
+        const auto status =
+            static_cast<PulseConnectionStatus>(app_.conference_status.load());
+        if (status == PULSE_CONNECTION_STATUS_DISCONNECTED
+            || status == PULSE_CONNECTION_STATUS_DISCONNECTING)
+            return;
+
+        PulseAsyncOperationResultCallbackConfig result_cb{on_async_result, &app_};
+        app_.connect_in_flight.store(true);
+        if (pulse_disconnect_async(app_.pulse, &result_cb, nullptr) != PULSE_SUCCESS)
+            app_.connect_in_flight.store(false);
+    }
+
+    bool camera_disabled() const { return to_lower(cfg_.camera) == "none"; }
 
     // True once we have waited longer than `camera_wait_secs` for a camera
     // that never showed up. From then on we join the meeting regardless (being
@@ -459,51 +593,65 @@ private:
     // camera keeps being retried in the background.
     bool camera_wait_expired(const TimePoint & now) const
     {
-        if (app_.cfg.camera_wait_secs <= 0)
+        if (cfg_.camera_wait_secs <= 0)
             return false;
-        return now - started_ >= std::chrono::seconds(app_.cfg.camera_wait_secs);
+        return now - started_ >= std::chrono::seconds(cfg_.camera_wait_secs);
     }
 
     void ensure_camera(const TimePoint & now)
     {
+        // "camera = none" is a deliberate choice (audio-only endpoint), so
+        // stop supervising: no waiting, no retries, and the call is free to
+        // go ahead without a picture.
+        if (camera_disabled()) {
+            app_.camera_error.exchange(false);
+            app_.video_devices_changed.exchange(false);
+            app_.camera_attached.store(false);
+            if (!camera_disabled_logged_) {
+                camera_disabled_logged_ = true;
+                LOG_WARN("camera is set to 'none' - joining without sending video");
+            }
+            return;
+        }
+
         // A device-list change or a device error invalidates whatever we think
         // we know about the camera.
-        if (app_.camera_error.exchange(false) && app_.camera_attached) {
+        if (app_.camera_error.exchange(false) && app_.camera_attached.load()) {
             LOG_WARN("camera '%s' reported an error - re-attaching",
                      app_.camera_name.c_str());
-            app_.camera_attached = false;
+            app_.camera_attached.store(false);
             next_camera_attempt_ = now;
         }
 
         if (app_.video_devices_changed.exchange(false)) {
             // Re-attach even if we believe we are attached: the same webcam
             // coming back after a bus reset gets a fresh device session.
-            if (app_.camera_attached)
+            if (app_.camera_attached.load())
                 LOG_INFO("re-attaching camera after a device list change");
-            app_.camera_attached = false;
+            app_.camera_attached.store(false);
             next_camera_attempt_ = now;
         }
 
         // Cheap periodic health check of the session we think we own.
-        if (app_.camera_attached && now >= next_camera_verify_) {
+        if (app_.camera_attached.load() && now >= next_camera_verify_) {
             next_camera_verify_ = now + kCameraVerifyInterval;
             bool is_connected   = false;
             const PulseError err = pulse_device_session_is_connected_by_id(
-                app_.pulse, app_.camera_id, PULSE_MEDIA_VIDEO, PULSE_MEDIA_INPUT,
+                app_.pulse, app_.camera_id.load(), PULSE_MEDIA_VIDEO, PULSE_MEDIA_INPUT,
                 PULSE_MEDIA_CONTENT_MAIN, &is_connected);
             if (err == PULSE_SUCCESS && !is_connected) {
                 LOG_WARN("camera session for '%s' went away - re-attaching",
                          app_.camera_name.c_str());
-                app_.camera_attached = false;
+                app_.camera_attached.store(false);
                 next_camera_attempt_ = now;
             }
         }
 
-        if (app_.camera_attached || now < next_camera_attempt_)
+        if (app_.camera_attached.load() || now < next_camera_attempt_)
             return;
 
-        if (attach_camera(app_)) {
-            camera_backoff_      = app_.cfg.retry_delay_secs;
+        if (attach_camera(app_, cfg_.camera)) {
+            camera_backoff_      = cfg_.retry_delay_secs;
             next_camera_verify_  = now + kCameraVerifyInterval;
             reset_stall_watchdog(now);
             return;
@@ -513,7 +661,7 @@ private:
         if (now >= next_camera_complaint_) {
             next_camera_complaint_ = now + std::chrono::seconds(15);
             LOG_WARN("no camera matching '%s' available yet - waiting",
-                     app_.cfg.camera.c_str());
+                     cfg_.camera.c_str());
         }
         next_camera_attempt_ = now + std::chrono::seconds(bump(camera_backoff_));
     }
@@ -526,10 +674,10 @@ private:
 
         if (!app_.microphone_attached)
             app_.microphone_attached =
-                attach_audio_device(app_, PULSE_MEDIA_INPUT, app_.cfg.microphone, "microphone");
+                attach_audio_device(app_, PULSE_MEDIA_INPUT, cfg_.microphone, "microphone");
         if (!app_.speaker_attached)
             app_.speaker_attached =
-                attach_audio_device(app_, PULSE_MEDIA_OUTPUT, app_.cfg.speaker, "speaker");
+                attach_audio_device(app_, PULSE_MEDIA_OUTPUT, cfg_.speaker, "speaker");
     }
 
     void ensure_call(const TimePoint & now)
@@ -538,7 +686,7 @@ private:
             static_cast<PulseConnectionStatus>(app_.conference_status.load());
 
         if (status == PULSE_CONNECTION_STATUS_CONNECTED) {
-            connect_backoff_ = app_.cfg.retry_delay_secs;
+            connect_backoff_ = cfg_.retry_delay_secs;
             return;
         }
 
@@ -548,17 +696,17 @@ private:
             return;
 
         // Don't join before the camera is up, unless the operator configured a
-        // deadline and it has passed.
-        if (!app_.camera_attached && !camera_wait_expired(now))
+        // deadline and it has passed (or asked for no camera at all).
+        if (!camera_disabled() && !app_.camera_attached.load() && !camera_wait_expired(now))
             return;
 
         if (now < next_connect_attempt_)
             return;
 
-        if (!app_.camera_attached)
+        if (!camera_disabled() && !app_.camera_attached.load())
             LOG_WARN("joining without a camera - still looking for one");
 
-        start_connect(app_);
+        start_connect(app_, cfg_);
         next_connect_attempt_ = now + std::chrono::seconds(bump(connect_backoff_));
     }
 
@@ -573,12 +721,12 @@ private:
     // check that ultimately matters.
     void watch_outgoing_video(const TimePoint & now)
     {
-        if (app_.cfg.video_stall_timeout_secs <= 0)
+        if (cfg_.video_stall_timeout_secs <= 0)
             return;
 
         const auto status =
             static_cast<PulseConnectionStatus>(app_.conference_status.load());
-        if (status != PULSE_CONNECTION_STATUS_CONNECTED || !app_.camera_attached) {
+        if (status != PULSE_CONNECTION_STATUS_CONNECTED || !app_.camera_attached.load()) {
             reset_stall_watchdog(now);
             return;
         }
@@ -599,13 +747,13 @@ private:
             return;
         }
 
-        if (now - last_video_progress_ < std::chrono::seconds(app_.cfg.video_stall_timeout_secs))
+        if (now - last_video_progress_ < std::chrono::seconds(cfg_.video_stall_timeout_secs))
             return;
 
         if (stall_escalation_ == 0) {
             LOG_WARN("no outgoing video for %ds - re-attaching the camera",
-                     app_.cfg.video_stall_timeout_secs);
-            app_.camera_attached = false;
+                     cfg_.video_stall_timeout_secs);
+            app_.camera_attached.store(false);
             next_camera_attempt_ = now;
             last_video_progress_ = now;
             stall_escalation_    = 1;
@@ -613,18 +761,21 @@ private:
             LOG_WARN("outgoing video still dead - redialling");
             last_video_progress_ = now;
             stall_escalation_    = 0;
-            PulseAsyncOperationResultCallbackConfig result_cb{on_async_result, &app_};
-            app_.connect_in_flight.store(true);
-            if (pulse_disconnect_async(app_.pulse, &result_cb, nullptr) != PULSE_SUCCESS)
-                app_.connect_in_flight.store(false);
+            leave_call();
         }
     }
 
-    App &     app_;
-    TimePoint started_;
-    int       camera_backoff_;
-    int       connect_backoff_;
+    App &            app_;
+    headless::Config cfg_;      // snapshot of app_.cfg, refreshed on reload
+    TimePoint        started_;
+    int              camera_backoff_;
+    int              connect_backoff_;
+    bool             camera_disabled_logged_ = false;
 
+    time_t    config_mtime_ = 0;
+    off_t     config_size_  = 0;
+
+    TimePoint next_config_check_{};
     TimePoint next_camera_attempt_{};
     TimePoint next_camera_verify_{};
     TimePoint next_camera_complaint_{};
@@ -706,14 +857,18 @@ int main(int argc, char ** argv)
 
     App         app;
     std::string error;
+    app.config_path = config_path;
     if (!headless::load_config(config_path, app.cfg, error)) {
         std::fprintf(stderr, "Config error: %s\n", error.c_str());
         return 1;
     }
+    app.verbose.store(app.cfg.verbose);
 
     LOG_INFO("pulse-headless starting (config: %s)", config_path.c_str());
     LOG_INFO("meeting room: %s via %s%s", app.cfg.conference.c_str(), app.cfg.host.c_str(),
              app.cfg.pin.empty() ? "" : " (PIN configured)");
+    LOG_INFO("edit %s at any time - the change is picked up without a restart",
+             config_path.c_str());
 
     // Terminate cleanly so systemd's stop/restart leaves the conference
     // properly rather than waiting for the server-side timeout.

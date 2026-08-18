@@ -53,8 +53,16 @@ sudo scripts/install-pulse-arm.sh
 ```
 
 They install to the same `/opt/pexip` prefix, so the CMake build finds them
-without any extra flags. See [`demos/headless/`](demos/headless/) for the demo
-that targets these boxes.
+without any extra flags.
+
+If the Pi is going to be a meeting-room endpoint, you don't need any of this by
+hand — [`demos/headless/install.sh`](demos/headless/) does the SDK, the build,
+the config and the boot service in one command:
+
+```bash
+git clone https://github.com/odallokken/dopplerola.git
+cd dopplerola && sudo ./demos/headless/install.sh
+```
 
 ### macOS
 

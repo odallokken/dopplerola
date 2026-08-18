@@ -1,6 +1,8 @@
 # ---------------------------------------------------------------------------
 # pulse-headless.service — start the Pulse room client at boot.
 #
+# Normally installed for you by ../install.sh. To do it by hand:
+#
 #   sudo install -m 644 pulse-headless.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now pulse-headless
@@ -9,7 +11,6 @@
 # ---------------------------------------------------------------------------
 [Unit]
 Description=Pexip Pulse headless room client
-Documentation=https://github.com/odallokken/dopplerola
 Wants=network-online.target
 After=network-online.target
 
@@ -25,8 +26,9 @@ Environment=LD_LIBRARY_PATH=/opt/pexip/lib
 ExecStart=/usr/local/bin/pulse-headless --config /etc/pulse-headless.conf
 
 # Runs as an unprivileged account; 'video' grants access to /dev/video*, and
-# 'audio' to the sound devices. Create it once with:
-#   sudo useradd --system --groups video,audio --shell /usr/sbin/nologin pulse
+# 'audio' to the sound devices. ../install.sh creates it; by hand it is:
+#   sudo useradd --system --user-group --groups video,audio \
+#                --shell /usr/sbin/nologin pulse
 User=pulse
 Group=pulse
 SupplementaryGroups=video audio

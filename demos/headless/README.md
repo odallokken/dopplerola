@@ -40,6 +40,8 @@ the separate, opt-in [`sip`](../sip/) demo).
 * Answering a PIN-protected meeting room non-interactively from the config file
   (`PulseRestConnectionConfig::pin_code`, plus
   `pulse_options_set_pin_code_request_callbacks()` for when the node asks).
+* Re-reading the config file while running, so changing meeting room is a
+  one-line edit rather than a service restart.
 
 ## Configuration
 
@@ -57,46 +59,79 @@ Everything else has a sensible default: `display_name`, device selection
 (`camera` / `microphone` / `speaker` — `auto`, `none`, or part of a device
 name), the retry backoff, and the stalled-video watchdog timeout.
 
+The file is re-read while the client runs: change the room (or the camera) and
+save, and the change is applied within a couple of seconds — see
+[Dialling a different room later](#dialling-a-different-room-later).
+
 > The file can contain a meeting-room PIN — install it as `0600` and owned by
-> the account the service runs as.
+> the account the service runs as. `install.sh` does that for you.
 
-## Build & run
+## Install it on the Pi (the short version)
 
-On the Pi (arm64), install the ARM SDK that ships in this repo, then build just
-this demo — it needs **no** GLFW/OpenGL/ImGui, so nothing pulls in a GUI stack:
+Two commands on a fresh Ubuntu Server 24.04 install — the installer asks for the
+server, the room URI and the PIN, then sets everything up:
 
 ```bash
-sudo scripts/install-pulse-arm.sh
+git clone https://github.com/odallokken/dopplerola.git
+cd dopplerola
+sudo ./demos/headless/install.sh
+```
+
+That single script installs the Pulse SDK for the machine's architecture (arm64
+on the Pi), builds this demo, writes `/etc/pulse-headless.conf`, creates an
+unprivileged `pulse` account in the `video` and `audio` groups, and enables the
+`pulse-headless` systemd service. From then on the Pi joins the meeting room on
+every boot with no human interaction.
+
+```bash
+journalctl -u pulse-headless -f      # watch it join
+```
+
+**Upgrading** is the same two commands — the config file is never overwritten:
+
+```bash
+git pull && sudo ./demos/headless/install.sh
+```
+
+### Dialling a different room later
+
+Edit the config file and save it. That is all:
+
+```bash
+sudo nano /etc/pulse-headless.conf
+```
+
+The running client re-reads the file within a couple of seconds, leaves the old
+room and joins the new one. No restart, no reboot, no service commands. A file
+that is half-written or has a typo is rejected — the client logs the problem and
+carries on with the previous settings.
+
+### Running it by hand
+
+To try it out from the checkout, without systemd (Ctrl-C to stop):
+
+```bash
+./demos/headless/start-client.sh                    # or --config <path>
+```
+
+It builds the client on first use and picks up `demos/headless/headless.conf`
+(created from the example if missing), or `/etc/pulse-headless.conf`.
+
+## Build & run manually
+
+If you would rather do it yourself: this demo needs **no** GLFW/OpenGL/ImGui, so
+nothing pulls in a GUI stack.
+
+```bash
+sudo scripts/install-pulse-arm.sh                   # arm64; x86-64: sdk/linux/debs/*.deb
 cmake -S . -B build -DBUILD_DOPPLER=OFF -DBUILD_GATEWAY=OFF -DBUILD_VIDEOWALL=OFF
 cmake --build build -j
 cp demos/headless/headless.conf.example headless.conf   # edit host/conference/pin
 ./build/run-headless.sh --config headless.conf
 ```
 
-On an x86-64 workstation the same commands work after installing
-`sdk/linux/debs/*.deb` (see the top-level [README](../../README.md)).
-
-## Install it as a boot service
-
-```bash
-# 1. the binary + its config
-sudo install -m 755 build/demos/headless/pulse_headless /usr/local/bin/pulse-headless
-sudo install -m 600 demos/headless/headless.conf.example /etc/pulse-headless.conf
-sudo nano /etc/pulse-headless.conf          # host / conference / pin
-
-# 2. an unprivileged account that may open /dev/video*
-sudo useradd --system --groups video,audio --shell /usr/sbin/nologin pulse
-sudo chown pulse:pulse /etc/pulse-headless.conf
-
-# 3. the service
-sudo install -m 644 demos/headless/systemd/pulse-headless.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now pulse-headless
-journalctl -u pulse-headless -f
-```
-
-From here on the Pi joins the meeting room on every boot with no human
-interaction.
+The systemd unit in [`systemd/`](systemd/) is the one `install.sh` deploys; see
+its header for the manual steps.
 
 ## Notes for the Raspberry Pi
 
