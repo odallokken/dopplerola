@@ -5,6 +5,9 @@ build/
 compile_commands.json
 demos/pexninja/msvc/.vs
 
+# Local room settings (may contain a meeting PIN)
+demos/headless/headless.conf
+
 # Dev scratch / run logs
 run.log
 run_*.txt

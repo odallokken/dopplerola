@@ -17,6 +17,7 @@ of the SDK. Extending the repo? Read [`AGENTS.md`](AGENTS.md) and
 | [**doppler**](demos/doppler/) | A Pexip Infinity video call in one heavily-commented file: connect over REST, render the remote + self-view yourself, plus RTMP ingest and a camera-on-RTMP "Twitch mix". | C++ / CMake · built by default |
 | [**gateway**](demos/gateway/) | Two Pulse instances bridged together, relaying raw audio + video between two conferences using only the data-session input/output APIs — a tiny cross-domain "guard". | C++ / CMake · built by default |
 | [**videowall**](demos/videowall/) | A control-room **production switcher**: prepare sources into a live **library**, then point-click-drag them onto a superwide **video wall** *and* a per-conference **Send** canvas (plus a **Presentation** bus) that is composited and pushed *back* to each far end — **one Pulse instance per source**, the inverse of pexninja's single-instance compositor. | C++ / CMake · built by default |
+| [**headless**](demos/headless/) | An unattended room client with **no UI at all**: reads a config file (host, meeting-room URI, PIN), waits for the USB webcam, dials the room and keeps the picture flowing — camera hotplug, device errors and stalled video all recover on their own. Built for a **Raspberry Pi 4** running Ubuntu Server. | C++ / CMake · built by default (no GUI deps) |
 | [**sip**](demos/sip/) | Pulse used purely as a media engine, with **PJSIP** doing the SIP signalling (manual SDP offer/answer). No Pexip Infinity node required. | C++ / CMake · opt-in (needs PJSIP) |
 | [**pexninja**](demos/pexninja/) | The full reference client (~12k LoC) exercising the **widest array** of Pulse functionality — conference control, roster, devices, annotation, media stats and much more. | C++ / CMake (Linux, macOS) · MSVC (Windows, via the Pulse NuGet) · opt-in (extra deps) |
 | [**android**](demos/android/) | A Kotlin/Gradle sample app using the **Pulse Android SDK**: preflight, join, roster, chat, screen share, media stats. | Android / Gradle |
@@ -42,6 +43,27 @@ sudo apt-get install -f
 This installs the headers under `/opt/pexip/include` and the shared library
 under `/opt/pexip/lib`.
 
+### Linux on ARM (Raspberry Pi 4, Ubuntu Server 24.04)
+
+The arm64 packages ship under [`sdk/linux_arm/deb/`](sdk/linux_arm/deb/). The
+helper script installs them (and the system libs they need) in one go:
+
+```bash
+sudo scripts/install-pulse-arm.sh
+```
+
+They install to the same `/opt/pexip` prefix, so the CMake build finds them
+without any extra flags.
+
+If the Pi is going to be a meeting-room endpoint, you don't need any of this by
+hand — [`demos/headless/install.sh`](demos/headless/) does the SDK, the build,
+the config and the boot service in one command:
+
+```bash
+git clone https://github.com/odallokken/dopplerola.git
+cd dopplerola && sudo ./demos/headless/install.sh
+```
+
 ### macOS
 
 The Pulse dylibs ship under [`sdk/macos/`](sdk/macos/); point CMake at them with
@@ -53,6 +75,10 @@ The Pulse dylibs ship under [`sdk/macos/`](sdk/macos/); point CMake at them with
 sudo apt-get install -y cmake build-essential \
                         libglfw3-dev libgl1-mesa-dev
 ```
+
+`libglfw3-dev` / `libgl1-mesa-dev` are only needed by the demos that draw a UI.
+On a headless box, build just [`headless`](demos/headless/) (see below) and
+`cmake build-essential` is enough.
 
 Individual demos may need a little more (e.g. `pexninja` wants `libx11-dev`,
 `sip` needs PJSIP) — each demo's README spells out its extras.
@@ -71,6 +97,15 @@ cmake --build build -j
 On the first configure, CMake fetches Dear ImGui from GitHub (≈ 5 MB). Enable
 the opt-in demos with their options, e.g. `-DBUILD_PEXNINJA=ON` or
 `-DBUILD_DOPPLER_SIP=ON` — see each demo's README for details.
+
+Turning all the GUI demos off skips the GLFW/OpenGL/ImGui lookup entirely,
+which is how the headless client builds on a display-less box:
+
+```bash
+cmake -S . -B build -DBUILD_DOPPLER=OFF -DBUILD_GATEWAY=OFF -DBUILD_VIDEOWALL=OFF
+cmake --build build -j
+./build/run-headless.sh --config headless.conf
+```
 
 Each demo ships a generated `run-<demo>.sh` launcher that puts Pulse's private
 sibling libraries on the dynamic-linker search path and exports `PEX_BASE_PATH`

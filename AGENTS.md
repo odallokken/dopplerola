@@ -20,10 +20,13 @@ demos/            One folder per demo. Each is self-contained: source + its own
   gateway/        Two Pulse instances bridged via raw data sessions.
   sip/            Pulse as a media engine; PJSIP does the SIP signalling.
   pexninja/       The big reference client — widest Pulse surface of them all.
+  headless/       Unattended room client: config file in, auto-dials a VMR,
+                  no UI (targets a headless Raspberry Pi 4 / arm64).
   android/        Android (Kotlin/Gradle) sample using the Pulse Android SDK.
 
 sdk/              The Pexip Pulse SDK artifacts, by platform.
   linux/          .deb packages (debs/) + their extracted contents (opt/, usr/).
+  linux_arm/      arm64 .deb packages (deb/) + their extracted contents.
   macos/          libpexpulse.dylib + libpexlgpl.dylib.
   windows/        NuGet packages.
 
@@ -95,8 +98,10 @@ when in doubt, **`grep` `demos/pexninja/pexninja.cpp` for the `pulse_*` symbol**
 
 The top-level `CMakeLists.txt` is just an orchestrator. It:
 
-1. finds the shared dependencies once — `OpenGL`, `glfw3`, `Threads`, the Pulse
-   runtime (`pulse_find_runtime()`), and Dear ImGui (`pulse_declare_imgui()`);
+1. finds the shared dependencies once — `Threads`, the Pulse runtime
+   (`pulse_find_runtime()`), and, *only when a GUI demo is enabled*, `OpenGL`,
+   `glfw3` and Dear ImGui (`pulse_declare_imgui()`) so a headless box can build
+   `headless` on its own;
 2. exposes a `BUILD_<DEMO>` option per demo; and
 3. `add_subdirectory(demos/<name>)` for each enabled demo.
 
