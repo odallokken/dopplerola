@@ -42,6 +42,11 @@
 //
 //  The same "never give up" logic covers the call itself: connection attempts
 //  are retried with exponential backoff, forever.
+//
+//  Audio is treated as optional in the same spirit: Pulse captures and plays it
+//  through PipeWire, and a box with no PipeWire daemon (the normal state of
+//  affairs for a system service) must still get its picture into the meeting.
+//  See `pipewire_available()` below for why we look before we leap.
 // ============================================================================
 
 #include <algorithm>
@@ -51,13 +56,17 @@
 #include <csignal>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <mutex>
 #include <string>
 #include <thread>
 
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 // The single header that pulls in the full Pulse API surface.
 #include <pexpulse/pulse.h>
@@ -370,6 +379,75 @@ bool attach_camera(App & app, const std::string & want)
     return true;
 }
 
+// ----------------------------------------------------------------------------
+//  Is there an audio server to talk to?
+// ----------------------------------------------------------------------------
+//
+//  Pulse's audio devices are PipeWire clients. When no PipeWire daemon is
+//  reachable the media engine logs "Failed to connect to PipeWire" and then
+//  builds its audio element on top of the connection it just failed to make,
+//  which segfaults inside libpipewire (pw_stream_new on a NULL core) and takes
+//  the whole client down with it. That is exactly the situation of a systemd
+//  service: no login session, so no XDG_RUNTIME_DIR and no user PipeWire.
+//
+//  Video does not go anywhere near PipeWire, so the sane behaviour is to send
+//  the picture and skip the audio - but only Pulse's *caller* can decide that,
+//  so we check the socket ourselves before asking for any audio device.
+//
+//  Resolution follows libpipewire's own rules: the runtime directory comes from
+//  PIPEWIRE_RUNTIME_DIR, else XDG_RUNTIME_DIR, else USERPROFILE, and the socket
+//  in it is named by PIPEWIRE_REMOTE (default "pipewire-0").
+// ----------------------------------------------------------------------------
+
+std::string pipewire_socket_path()
+{
+    auto from_env = [](const char * name) -> const char * {
+        const char * value = std::getenv(name);
+        return (value != nullptr && *value != '\0') ? value : nullptr;
+    };
+
+    const char * remote = from_env("PIPEWIRE_REMOTE");
+    if (remote == nullptr)
+        remote = "pipewire-0";
+    if (remote[0] == '/')
+        return remote;  // an absolute path bypasses the runtime directory
+
+    const char * runtime_dir = from_env("PIPEWIRE_RUNTIME_DIR");
+    if (runtime_dir == nullptr)
+        runtime_dir = from_env("XDG_RUNTIME_DIR");
+    if (runtime_dir == nullptr)
+        runtime_dir = from_env("USERPROFILE");
+    if (runtime_dir == nullptr)
+        return {};
+
+    return std::string(runtime_dir) + "/" + remote;
+}
+
+// A connect() on the socket rather than a stat(): a leftover socket file from a
+// daemon that is no longer running would crash us just as thoroughly.
+bool pipewire_available(std::string & where)
+{
+    where = pipewire_socket_path();
+    if (where.empty())
+        return false;
+
+    sockaddr_un addr{};
+    if (where.size() >= sizeof(addr.sun_path))
+        return false;
+
+    const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0)
+        return false;
+
+    addr.sun_family = AF_UNIX;
+    std::memcpy(addr.sun_path, where.c_str(), where.size() + 1);
+
+    const bool connected =
+        ::connect(fd, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) == 0;
+    ::close(fd);
+    return connected;
+}
+
 // Best-effort audio. A webcam-only Pi may well have a microphone (most webcams
 // do) and no speaker at all, so neither is allowed to hold up the call.
 bool attach_audio_device(App & app, PulseMediaDirection direction, const std::string & want,
@@ -554,9 +632,17 @@ private:
         if (audio_changed) {
             // Rebuild both directions from scratch: the audio session API only
             // offers an all-or-nothing disconnect for the MAIN content.
-            pulse_device_session_disconnect_main_audio(app_.pulse);
+            //
+            // Every audio call into Pulse builds a PipeWire element - the
+            // *disconnect* included - so it is only safe with a daemon behind
+            // it. Without one nothing was ever attached, so skipping it costs
+            // nothing and saves the segfault described at pipewire_available().
+            std::string socket_path;
+            if (pipewire_available(socket_path))
+                pulse_device_session_disconnect_main_audio(app_.pulse);
             app_.microphone_attached = false;
             app_.speaker_attached    = false;
+            audio_unavailable_logged_ = false;
             next_audio_attempt_      = now;
         }
 
@@ -672,6 +758,31 @@ private:
             return;
         next_audio_attempt_ = now + kAudioRetryInterval;
 
+        const bool want_microphone = to_lower(cfg_.microphone) != "none";
+        const bool want_speaker    = to_lower(cfg_.speaker) != "none";
+        if (!want_microphone && !want_speaker)
+            return;
+
+        // Never ask Pulse for an audio device without a PipeWire daemon behind
+        // it - that is a segfault, not an error code. Re-checked on every retry
+        // so audio is picked up if a daemon turns up later.
+        std::string socket_path;
+        if (!pipewire_available(socket_path)) {
+            if (!audio_unavailable_logged_) {
+                audio_unavailable_logged_ = true;
+                LOG_WARN("no PipeWire audio server at '%s' - continuing without audio "
+                         "(video is unaffected); see the demo README, or set "
+                         "'microphone = none' and 'speaker = none' to stop looking",
+                         socket_path.empty() ? "<no runtime directory>" : socket_path.c_str());
+            }
+            return;
+        }
+
+        if (audio_unavailable_logged_) {
+            audio_unavailable_logged_ = false;
+            LOG_INFO("PipeWire is available at '%s' - attaching audio", socket_path.c_str());
+        }
+
         if (!app_.microphone_attached)
             app_.microphone_attached =
                 attach_audio_device(app_, PULSE_MEDIA_INPUT, cfg_.microphone, "microphone");
@@ -770,7 +881,8 @@ private:
     TimePoint        started_;
     int              camera_backoff_;
     int              connect_backoff_;
-    bool             camera_disabled_logged_ = false;
+    bool             camera_disabled_logged_   = false;
+    bool             audio_unavailable_logged_ = false;
 
     time_t    config_mtime_ = 0;
     off_t     config_size_  = 0;

@@ -23,6 +23,20 @@ Type=simple
 Environment=PEX_BASE_PATH=/opt/pexip
 Environment=LD_LIBRARY_PATH=/opt/pexip/lib
 
+# A system service has no login session, so nothing has given it a home to
+# write to; the audio libraries underneath Pulse then log a stream of "Failed
+# to create secure directory" errors. StateDirectory= creates
+# /var/lib/pulse-headless owned by the service account, and HOME points at it.
+StateDirectory=pulse-headless
+Environment=HOME=/var/lib/pulse-headless
+
+# Audio (microphone / speaker) needs a PipeWire daemon this service can reach.
+# There is none in a system service by default, and the client says so once and
+# then carries on sending video. If you do run PipeWire system-wide, point the
+# client at its socket directory and audio is attached within 30 seconds:
+#Environment=PIPEWIRE_RUNTIME_DIR=/run/pipewire
+# See ../README.md ("Audio") for the details.
+
 ExecStart=/usr/local/bin/pulse-headless --config /etc/pulse-headless.conf
 
 # Runs as an unprivileged account; 'video' grants access to /dev/video*, and
