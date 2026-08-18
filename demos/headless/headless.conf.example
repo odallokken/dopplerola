@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# pulse-headless — configuration
+#
+# Install as /etc/pulse-headless.conf. The file may contain a meeting-room PIN,
+# so keep it readable only by the account the service runs as:
+#
+#     sudo install -o pulse -g pulse -m 600 headless.conf.example \
+#          /etc/pulse-headless.conf
+#
+# Format: "key = value", '#' starts a comment, keys are case-insensitive.
+# ---------------------------------------------------------------------------
+
+# --- Required --------------------------------------------------------------
+
+# Hostname of the Pexip Conferencing Node (or the domain to look up) to call.
+host = pexip.example.com
+
+# URI of the virtual meeting room to dial.
+conference = ola@pexpo.net
+
+# --- Optional --------------------------------------------------------------
+
+# PIN for the virtual meeting room. Leave empty (or delete the line) if the
+# room has no PIN.
+pin =
+
+# The name shown in the participant list of the meeting.
+display_name = Raspberry Pi
+
+# Device selection. "auto" = the system default (falling back to the first
+# device found), "none" = do not use that direction at all, anything else is
+# matched case-insensitively against the device name, e.g. "c920" matches
+# "HD Pro Webcam C920". Run `v4l2-ctl --list-devices` to see what is attached.
+camera     = auto
+microphone = auto
+speaker    = none
+
+# --- Camera / call resilience ---------------------------------------------
+
+# How long to wait for the webcam to appear before joining the meeting anyway.
+# 0 (the default) means "wait as long as it takes" — the Pi joins only once it
+# has a picture to send. A USB webcam frequently enumerates *after* the network
+# is up on a cold boot, so do not set this too low.
+camera_wait_secs = 0
+
+# Retry backoff, in seconds, for both camera attach and conference connect.
+# The delay doubles on each failure up to max_retry_delay_secs.
+retry_delay_secs     = 5
+max_retry_delay_secs = 60
+
+# Watchdog: if no video has left the box for this many seconds while connected,
+# the camera is re-attached; if that does not help, the call is redialled.
+# Set to 0 to disable.
+video_stall_timeout_secs = 30
+
+# Forward Pulse's own info-level logging to the journal. Useful when
+# troubleshooting a camera that will not come up.
+verbose = false

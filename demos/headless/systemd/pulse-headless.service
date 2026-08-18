@@ -1,0 +1,47 @@
+# ---------------------------------------------------------------------------
+# pulse-headless.service — start the Pulse room client at boot.
+#
+#   sudo install -m 644 pulse-headless.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pulse-headless
+#
+# See ../README.md for the full install walk-through.
+# ---------------------------------------------------------------------------
+[Unit]
+Description=Pexip Pulse headless room client
+Documentation=https://github.com/odallokken/dopplerola
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+
+# The Pulse runtime aborts at startup without PEX_BASE_PATH, and its private
+# sibling libraries (libpexlgpl, libonnxruntime.so.1, ...) are only found via
+# the library path.
+Environment=PEX_BASE_PATH=/opt/pexip
+Environment=LD_LIBRARY_PATH=/opt/pexip/lib
+
+ExecStart=/usr/local/bin/pulse-headless --config /etc/pulse-headless.conf
+
+# Runs as an unprivileged account; 'video' grants access to /dev/video*, and
+# 'audio' to the sound devices. Create it once with:
+#   sudo useradd --system --groups video,audio --shell /usr/sbin/nologin pulse
+User=pulse
+Group=pulse
+SupplementaryGroups=video audio
+
+# The client supervises the webcam and the call itself and never exits on its
+# own, so a restart here only ever means "something went very wrong".
+Restart=always
+RestartSec=5
+
+# Modest hardening. Note: do NOT add PrivateDevices=yes — it hides /dev/video*
+# from the service and the webcam would never be found.
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
