@@ -38,6 +38,11 @@ display_name = Raspberry Pi
 # device found), "none" = do not use that direction at all, anything else is
 # matched case-insensitively against the device name, e.g. "c920" matches
 # "HD Pro Webcam C920". Run `v4l2-ctl --list-devices` to see what is attached.
+#
+# Audio (microphone/speaker) goes through PipeWire, which a system service does
+# not normally have: the client then logs that once and joins with video only.
+# Set both to "none" if the box is never going to have audio - see the "Audio"
+# section of the demo README.
 camera     = auto
 microphone = auto
 speaker    = none

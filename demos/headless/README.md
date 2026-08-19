@@ -35,6 +35,7 @@ the separate, opt-in [`sip`](../sip/) demo).
   | Camera errors out mid-call | `pulse_register_device_error_callback()` → re-attach |
   | Device session silently disappears | `pulse_device_session_is_connected_by_id()` polled every 5 s → re-attach |
   | Camera is "attached" but no picture ever reaches the far end | `pulse_media_stats_get()` watches `video_tx.total_packets_sent`; if it stops moving, re-attach the camera, then redial the call |
+  | No audio server on the box | The PipeWire socket is probed before any audio device is requested — the box joins with video only and picks audio up within 30 s if a daemon appears |
   | Node unreachable / call dropped | Redials with exponential backoff, forever |
 
 * Answering a PIN-protected meeting room non-interactively from the config file
@@ -144,9 +145,50 @@ its header for the manual steps.
   device is attached (many webcams expose a second, metadata-only node).
 * **Do not add `PrivateDevices=yes`** to the systemd unit — it hides
   `/dev/video*` from the service and the webcam will never be found.
-* **Audio.** A system service has no PulseAudio/PipeWire user session. If the
-  journal shows the microphone or speaker failing to attach and you do not need
-  audio, set `microphone = none` and `speaker = none`; video is unaffected.
 * **Encoding load.** The Pi 4 encodes in software here. If the far end reports
   a low frame rate, prefer a 720p-capable camera and keep the room layout
   modest.
+
+## Audio
+
+Pulse captures and plays audio through **PipeWire**, and a systemd service has
+no login session — so no `XDG_RUNTIME_DIR`, and no PipeWire daemon to talk to.
+Asking Pulse for an audio device in that state is fatal: the media engine logs
+`Failed to connect to PipeWire` and then builds its audio element on the
+connection it just failed to make, which segfaults inside libpipewire
+(`pw_stream_new` on a NULL core) and takes the client with it.
+
+The client therefore probes the PipeWire socket itself before requesting any
+audio device, and says so once:
+
+```
+[warn] no PipeWire audio server at '/run/user/1001/pipewire-0' - continuing
+       without audio (video is unaffected); ...
+```
+
+Video is untouched, and the probe is repeated every 30 s, so audio is attached
+by itself if a daemon shows up later. Setting `microphone = none` and
+`speaker = none` skips the whole thing.
+
+To actually get audio on the box, give the service a PipeWire daemon it can
+reach:
+
+* Install it — `sudo apt install pipewire wireplumber` (the Pulse packages only
+  pull in the *client* library, `libpipewire-0.3-0t64`).
+* Let the service account run one, by keeping a user manager alive for it:
+
+  ```bash
+  sudo loginctl enable-linger pulse
+  sudo systemctl edit pulse-headless      # add, with the account's own UID:
+  #   [Service]
+  #   Environment=XDG_RUNTIME_DIR=/run/user/1001
+  #   ProtectHome=no                      # ProtectHome=yes hides /run/user
+  ```
+
+* Or run PipeWire system-wide and point the service at its socket directory
+  with `Environment=PIPEWIRE_RUNTIME_DIR=/run/pipewire` (the unit file ships
+  that line commented out).
+
+Running the client by hand from a normal desktop session
+(`./demos/headless/start-client.sh`) needs none of this — the session already
+has PipeWire.
